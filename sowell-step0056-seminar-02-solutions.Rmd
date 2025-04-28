@@ -1,0 +1,235 @@
+---
+title: "Seminar 02"
+subtitle: "Practicing Your Transforms"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(lubridate) ;
+library(stringr) ;
+library(purrr) ;
+
+library(tidyverse) ;
+library(tibble) ; 
+library(readr) ;
+
+library(knitr) ;
+
+```
+
+# Make a Copy of this File
+
+**You should start by making a *copy* of this file in the same directory as this one (ie, in your repository directory), and changing `lastname-` to your last name (surname), then doing your work in that file.**
+
+# Learning Objectives
+
+  - gain experience reviewing a real dataset
+  - reading in data using the `read_` family of functions from the [`readr`](https://readr.tidyverse.org/) package
+  - consider the basics of string patterns (shown in `list.files` below); a good start is [Regular Expressions](https://cran.r-project.org/web/packages/stringr/vignettes/regular-expressions.html), which immediately points to [Wickham's Chapter on Strings](https://r4ds.had.co.nz/strings.html), in particular [14.3](https://r4ds.had.co.nz/strings.html#matching-patterns-with-regular-expressions)
+  - use of `map` from the [`purrr`](https://purrr.tidyverse.org/) package to apply a function to each element of a vector, then collate those results
+  - integrate data from analyses into RMarkdown text
+  - transform data using a number of `dplyr` transforms reviewed in the lecture and readings
+  - display tables using the `knitr::kable` function (invoke `?kable` in the console to learn more) 
+  - gain experience creating and rendering RMarkdown documents
+  - start learning about the options in the R chunk headers
+
+# NYTimes COVID-19 Data
+
+To illustrate the use of transforms on a real data set, we apply the transforms we just learned on the NYTimes COVID-19 data.  **Do not change the chunk named `nytimes` below.**
+
+```{r nytimes, eval=TRUE, echo=TRUE, warning=FALSE, message=FALSE}
+
+##
+## read_csv is a function from the reader package.  Note that this is using a
+## relative path, essentially looking in the current directory (.) for the 
+## file us-counties.csv
+##
+
+## Data is spread over multiple files, get the filenames for each
+nytimes_files <- list.files( path = ".", pattern = "us-counties-202.\\.csv" ) ;
+
+## use map to apply the read_csv function to each file
+nytimes_c19.lst <- 
+  nytimes_files %>% 
+    map( \(x) read_csv( file = x ) ) ;
+
+nytimes_c19.tib <- bind_rows( nytimes_c19.lst ) ;
+```
+
+Once you have created the tibble, double click on the variable in the list in the upper right corner (or open it in the console with `View(nytimes_c19.tib)`) to familiarize yourself with the data.  You should also read over the documentation of the [NYTimes covid-19-data](https://github.com/nytimes/covid-19-data) dataset on GitHub (reading through the description of a dataset you are using is always good practice).
+
+## Case Rate
+
+The county level NYTimes data reports *cumulative* cases, i.e. for each day in the dataset, it reports the total number of cases in that county since the beginning of the pandemic.  We would like to examine the *rate of change*.  This is the difference between day `n` and day `n-1` (the day before).  Fortunately, there is a nice function for doing this called `diff`.  You can learn more by invoking `?diff` in the console.  An illustration of `diff`, structured very similarly for how you will use it in this exercise, is provided below.
+
+```{r diff-example}
+
+## Generate an illustration of series of values where the next value (n+1) is 
+## the sum of the previous values, just like the cumulative cases in the NYTimes
+## data.  For those of you interested, you may want to examine the functions 
+## used here to understand how this example is generated.
+ex_values <- ceiling( cumsum( rnorm( n = 11, mean = 3, sd = 1 ) ) ) ;
+
+## Get the rates of change, i.e. the differences of value n from the next value
+## n + 1
+ex_rate <- diff( ex_values );
+
+## Are the lengths of these two the same?
+( same_length <- length(ex_values) == length(ex_rate) )
+
+## For our analysis of cases, we assume that there were no cases before the 
+## reporting period (this is a convenient assumption for analysis, but does not
+## affect the overall trend)
+ex_rate <- c( ex_values[1], diff( ex_values ) );
+
+## Are the lengths of these two the same?
+( same_length <- length(ex_values) == length(ex_rate) )
+
+## Let's make this into a tibble so we can examine the correspondence.
+## We now have a nice mapping that shows the rate corresponding to each value.
+( ex_rate.tib <- tibble( values = ex_values, rate = ex_rate ) )
+
+```
+
+## Add Case Rate Variable
+
+In the chunk below, apply the following transforms to create the variable `case_rate` in the dataset `nytimes_c19.tib`:
+
+  - `group` the data by county  
+      *Hint: there are counties with the same name in multiple states, such as Berkeley in both South Carolina and West Virginia.  There are two ways to group your data to resolve this issue.  Either is acceptable.*
+  - use `mutate` to create the `case_rate` similar to the example above  
+      *Hint: does your data need to be in a particular order for diff to work?  Ie, what is the assumption?*
+
+```{r county_case_rate }
+
+nytimes_c19.tib %<>% 
+  group_by( state, county ) %>%
+  ## group_by( fips ) %>% # but this doesn't keep state and county name
+  arrange( date ) %>%
+  mutate( case_rate = c( cases[1], diff(cases) ) ) ;
+
+```
+
+*Note: When grouping your data, you can always check to see how the data is being grouped by piping your tibble to the `group_keys()` function.  Try it to confirm you are using the grouping variables you expect.*
+
+## Recent Cases
+
+Now you will create simple summaries of the case rates reported for each county since 1 March 2022 to the end of the dataset (23 March 2023)  This exercise illustrates how you will do an iterative set of transforms to:
+  
+  - creating datasets scoped to the problem at hand
+  - create summaries of those datasets to extract values you would like to report in your analysis, such as when you apply these skills in your project report
+
+For this exercise, you should perform the following transforms:
+
+  - `filter` the dataset to include only observations on or after 1 March 2022 and name this new dataset `nytimes_c19_recent.tib`   
+      *Hint: you can create a `Date` object with `recent_start <- as_date( "2022-03-01" )` and use that variable to filter your data.  After the seminar, you may want to look into the `Date` object and the `lubridate` package for functions that help manage dates.*
+  - using `nytimes_c19_recent.tib`, apply the `summarize` transform to create the following variables and name this new dataset `nytimes_c19_recent_summary.tib`:
+    - `max_cases`, the `max` of the `cases`
+    - `min_cases`, the `min` of the `cases`
+    - `mean_rate`, the `mean` of your `case_rate` variable
+  - using your new summary tibble, apply `mutate` to calculate `cases_for_period`, the `max_cases - min_cases`, which tells you how many new cases occurred in this period
+  - `arrange` your summary dataset in `desc`ending order, from the largest number of `cases_for_period` to the least
+  
+```{r nytime-cases-summary, echo=TRUE, eval=TRUE}
+
+recent_start <- as_date( "2022-03-01" ) ;
+
+nytimes_c19_recent.tib <- 
+  nytimes_c19.tib %>%
+    filter( date > recent_start ) ;
+
+nytimes_c19_recent_summary.tib <- 
+  nytimes_c19_recent.tib %>%
+    summarize( max_cases = max( cases ),
+               min_cases = min( cases ),
+               mean_rate = mean( case_rate ) 
+             ) %>%
+    mutate( cases_for_period = max_cases - min_cases ) %>%
+    arrange( desc( cases_for_period ) ) ;
+
+```
+
+Now that you have done some analysis, you will want to discuss the results in text, such as answering the questions below (and when you discuss data in your finalproject).  Consider the simple analysis I do below and how I integrate it into the text following the chunk.
+
+```{r berkeley-current-cumulative-cases}
+
+  berkeley_current.tib <- nytimes_c19.tib %>%
+    ## Notice the how I filter for the county, hint hint hint
+    filter( state == "South Carolina" & county == "Berkeley" ) %>%
+    filter( date == max(date) ) ;
+  
+  berkeley_date <- berkeley_current.tib$date ;
+  berkeley_current_cases <- berkeley_current.tib$cases ;
+  
+  berkeley_date.str <- format( berkeley_date, "%d %B %Y" )
+  berkeley_current_cases.str <- 
+    format( berkeley_current_cases, scientific=FALSE, big.mark = ",")
+```
+
+> The current cumulative `cases` in my home county, Berkeley County, South Carolina, as of `r berkeley_date.str`, is `r berkeley_current_cases.str` cases.
+
+Notice that:
+
+  - I calculate the values in the chunk above and then 
+  - use `format` to make sure my date is formatted pretty and my number is not in the default scientific notation.
+
+The utility here is that when the NYTimes data was updated daily.  When I pull the latest NYTimes data, then regenerate this document, those values would be up-to-date---I don't have to go back and make sure the values in my text are consistent with the latest data or analysis.  A smidge of work at the outset reduces work in the long term and ensures *automatically consistent, accurate* reporting of data.
+
+**Based on your analysis, what are the top five counties that have had the greatest number of new cases over this time period?  You can simply display the top five in the chunk as we have been doing, then briefly discuss your answer.**
+*Hint: use `?` to look up the help for the `head` and `tail` `tidyverse` functions*
+
+**You can go a step further by looking into the `kable` function (`?kable`) and displaying a pretty version of the tibble in a fancy table. For those extra credits, to add a table, your answer would look like:**
+
+```
+  Opening text of your answer, maybe tell me what this table is
+
+  `r{ kable( tibble from your analysis here ) }`
+  
+  Closing text of your answer, discussing the table.
+```
+
+```{r nytimes-cases-top5, eval=TRUE, echo=FALSE}
+
+kable( nytimes_c19_recent_summary.tib %>% head ( 5 ) );
+
+```
+
+*Your answer here*
+
+
+**Select one county your are interested in.  Write a short sentence or two reporting the cases at the start of our analysis period (1 March 2022), the end of the period, and the average `case_rate` over that period.  I have provided a chunk below for you to do your calculations.  Then answer the questions, with the data incorporated into the text as in my Berkeley County example above.**
+
+```{r county-report }
+
+# your code here
+
+```
+
+
+*Your sentence(s) here*
+
+
+# All Done
+
+Congratulations, you have completed the *Seminar 02 Learning Exercise*.  
+
+To practice submitting repositories, at the end of the seminar please do the following:  
+
+  1. make sure you have updated the `author` fields in the header at the beginning of the document 
+  1. save the file
+  1. knit the document
+  1. commit with the message 
+
+    Seminar 02
+    
+    Submitting at end of Seminar 02 to @jsowell78
+
+  5. push to GitHub 
+
+You can continue to tinker with the code here and do subsequent commits and pushes after the seminar, but Jesse would like you to do the commit above to see how far you progressed during the seminar.  This will be our standing operating procedure for seminars for the rest of the term.
+
+I hope this seminar has been a *transformative* experience!

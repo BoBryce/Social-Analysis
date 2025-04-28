@@ -1,0 +1,905 @@
+---
+title: "STEP0056 Problem Set 01"
+author: "Bryce Ai"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+
+library(lubridate) ;
+library(stringr) ;
+library(tidyverse) ;
+library(tibble) ;
+library(readr) ;
+```{r}
+library(tidyverse)
+# Load or create the original mpg data frame
+mpg <- ggplot2::mpg
+
+# Create the mpg_facets.tib with necessary transformations
+mpg_facets.tib <- mpg %>%
+  mutate(
+    drv = factor(drv, levels = c("4", "f", "r"), labels = c("four-wheel", "front-wheel", "rear-wheel")),
+    cyl = factor(cyl)
+  )
+
+mpg_js.tib <- readRDS( file = "mpg_js_tib.rds")
+
+grade <- 20 ;
+```
+
+# Problem Set Instructions
+
+## Submission
+
+As per the syllabus, there are two steps to submit your problem set:
+
+1. When you have completed the problem set, make sure you have put your student identifier in the author field, generate a PDF of your completed problem set, then commit and push to your problem set repository with the message:
+    
+    ```
+    Learning Exercise 01
+
+    @jsowell78 I am submitting learning exercise 01.
+    ```
+    
+1. Submit the completed PDF of the problem set via [Turnitin](https://moodle.ucl.ac.uk/mod/turnitintooltwo/view.php?id=5961519).
+
+**If you do not perform both of these steps you will not receive credit for this assessment.**
+
+## Marking and Points
+
+Below the header of each exercise you will see **[-/X]**.  **X** is the total points for that exercise.  When your exercise is marked, the **-** will be replaced with the marks you received for that exercise.  
+
+# Tibbles and Transforms
+
+The exercises in this section, *Tibbles and Transforms*, are worth a total of 10/20 points for this assessment and give you an opportunity to practice some of the transforms we have reviewed in lectures and seminars thus far.
+
+## Making a Tibble
+
+The exercises in this subsection are worth 3 points. 
+
+### Old Versus New Data Frames
+
+**[-/1]**
+
+Consider the `data.frame` `mtcars`.  The data is not a tibble---it is an old school  `data.frame`.  Use the `head` function to show the first few observations in this dataset.
+
+
+```{r show_mtcars}
+# Display the first few rows of the mtcars dataset
+head(mtcars)
+
+```
+
+Notice that `mtcars` does not have row numbers, but the names of the vehicles are listed.  `tibbles` typically do not do this unless you force them.  We are going to create a `tibble` named `mtcars.tib` with the `as_tibble` function from the `tibble` package.  Take a look at `?as_tibble` to understand what it does, paying attention to the first argument, `x`, and the `rownames` argument.
+
+### Create `mtcars.tib`
+
+In the following, we use the `as_tibble` function to create a `tibble` from `mtcars`, naming the variables for the row names `car_type`.  We name the resulting object (tibble) `mtcars.tib`.  
+
+*Hint: Remember you can show the value of a newly named object by putting the whole expression in parens*
+
+
+```{r make-tibble}
+
+( mtcars.tib <- as_tibble( x = mtcars, rownames="car_type" ) )
+
+```
+
+
+### Factors for Engine and Transmission
+
+**[-/2]**
+
+Consider the variables in `mtcars.tib` (below).  `mtcars.tib` has two variables---`vs` and `am` that are listed as `<dbl>`---but are really categorical variables for engine and transmission type (see `?mtcars` for description). 
+
+
+Building on the exercises for creating factors in class, use the `mutate` transform to *update* these variables so they are categorical variables.  Despite your feelings about automatic versus manual, these should be *unordered* categorical variables.  We will also introduce a new parameter for the creating factors, `labels`.  You will notice each variable is either `0` or `1`, which is not very meaningful.  These are the *levels*.  The *labels* parameter allows you to give those levels reasonable names.  The `labels` parameter takes a vector of strings that should be the corresponding, meaningful labels.  For instance, for `vs`, the labels parameter would be 
+
+```labels = c("v-shaped", "straight")```
+
+as per the documentation you read when you invoked `?mtcars`.  Update the tibble with the `mutate` transform, then show the newly updated object `mtcars.tib`.
+
+
+
+```{r eng-trans}
+
+# Update 'vs' and 'am' variables to be factors with meaningful labels
+mtcars.tib <- mtcars.tib %>%
+  mutate(vs = factor(vs, levels = c(0, 1), labels = c("v-shaped", "straight")),
+         am = factor(am, levels = c(0, 1), labels = c("automatic", "manual")))
+
+# Display the updated tibble
+mtcars.tib
+
+```
+
+
+
+## Let's Be Selective
+
+The exercise in this subsection is worth 1 point.
+
+We are pretty familiar with the `select` transform by now, but let's do one quick exercise to reinforce the lesson.
+
+### Just MPG and Engine Block Specs
+
+**[-/1]**
+
+Create a tibble named `mtcars_eff.tib` from `mtcars.tib` that *only* contains the variables `mpg`, `cyl`, `disp`, `hp`, and `vs`.  Show the first few values of `mtcars_eff.tib`.
+
+```{r eng-eff}
+# Create mtcars_eff.tib with selected variables
+mtcars_eff.tib <- select(mtcars.tib, mpg, cyl, disp, hp, vs)
+
+# Show the first few values of mtcars_eff.tib
+head(mtcars_eff.tib)
+```
+
+
+## Arranging Our Little Garage
+
+The exercises in this subsection are worth 1 point.
+
+In class we learned to use the `arrange` transform to effectively re-order the observations in our data.
+
+### MPG 
+
+**[-/0.5]**
+
+Write the code that will *display* a temporary (ephemeral, i.e. unnamed) tibble based on `mtcars.tib` in which the observations are ordered by `mpg` from best (highest) mpg to lowest (ie, in *desc*ending order).
+
+**Hint: many of the examples in the slides show ephemeral, unnamed objects, ie those not assigned to a named object.**
+
+
+```{r arrange-by-mpg}
+# Arrange and display mtcars.tib by descending mpg
+arrange(mtcars.tib, desc(mpg))
+
+```
+
+
+### MPG, Transmission, *and* Cylinders
+
+**[-/0.5]**
+
+Now write the code that will *display* a temporary (ephemeral, i.e. unnamed) tibble based on `mtcars.tib` in which the observations are ordered *first* by transmission type, *then* by number of cylinders (`cyl`) in increasing (ascending) order, *then* by `mpg` as above (best to worst).  Use `select` to only display the names of the vehicles (`car_type`) and the variables used to arrange the data (transmission type, cylinders, mpg).
+
+
+```{r arrange-by-mpg-trans-cyl}
+# Arrange and display mtcars.tib by transmission, cylinders, and descending mpg
+# while selecting only specific columns
+arrange(select(mtcars.tib, car_type, am, cyl, mpg), am, cyl, desc(mpg))
+
+```
+
+## Fun with Filters
+
+The exercises in this subsection are worth 1 point.
+
+Where the `select` transform allows us to reduce the number of variables in our dataset, the `filter` transform allows us to create subsamples of our observations, choosing only those that are salient to a particular analysis.  In the following exercises we practice `filter`ing a bit more.
+
+### Filtering on Engine Type
+
+**[-/0.5]**
+
+
+Write the code that will *display* a temporary tibble based on `mtcars.tib` that selects only the vechicle observations with a manual transmission.
+
+```{r filter-manual}
+
+# Filter and display vehicles with a manual transmission
+filter(mtcars.tib, am == "manual")
+```
+
+### Filtering on MPG and Displacement
+
+**[-/0.5]**
+
+Now we want to filter by MPG *and* displacement.  Use the `filter` function to select observations for which `mpg` is greater than the average (`mean`) `mpg` *and* displacement is greater than the average displacement `disp`.  Like the earlier exercises, just display a temporary tibble that shows the results of these transforms.
+
+*Hint: You need to calculate the means first, then use those in your `filter` transforms.*
+
+```{r filter-mpg-disp}
+
+# Calculate mean mpg and mean disp
+mean_mpg <- mean(mtcars.tib$mpg)
+mean_disp <- mean(mtcars.tib$disp)
+
+# Filter and display vehicles with mpg > mean mpg and disp > mean disp
+filter(mtcars.tib, mpg > mean_mpg, disp > mean_disp)
+
+
+```
+
+
+Based on your results, answer the question below.
+
+**How many vehicles fit this criterion?  Which ones are they?**  
+
+*your answer here*
+
+Based on the result, it shows a tibble with only one vehicle that fits the specified criterion: the "Hornet 4 Drive". This means that only one vehicle in the mtcars.tib dataset has both mpg and disp (displacement) greater than the average values of those variables.
+
+The vehicle that fits this criterion is:
+
+Hornet 4 Drive
+This is determined by the filter criteria that were applied to the dataset, which selected vehicles with both higher than average fuel efficiency (mpg) and larger than average engine displacement (disp). The result indicates that among the vehicles considered, only the "Hornet 4 Drive" meets both of these conditions.
+
+
+## Teenage Mutant Ninja Tibbles
+
+The exercises in this subsection are worth 4 points.
+
+In these final exercises, we are going to combine our familiarity with `mutate` with the `group_by` and `summarize` functions.
+
+### MPG and Transmission
+
+**[-/2]**
+
+
+We typically assume that manual and automatic transmissions have different fuel efficiency.  Create a temporary tibble that groups the data by transmission type, then calculate the average (`mean`) `mpg` for each of those groups and name that variable `avg_mpg`.  To simplify answering the following question, `arrange` the results in *desc*ending order by `avg_mpg`.
+
+```{r summarize-mpg}
+
+# Group by transmission type, calculate average mpg, and arrange in descending order by avg_mpg
+mtcars.tib %>%
+  group_by(am) %>%
+  summarize(avg_mpg = mean(mpg, na.rm = TRUE)) %>%
+  arrange(desc(avg_mpg))
+
+```
+
+Now answer the following question based on your analysis.
+
+**On average, based on *this* dataset, do vechicles with manual or automatic transmission get better (higher) gas mileage?**
+
+*your answer here*
+
+Based on the dataset shown, vehicles with manual transmission get better (higher) gas mileage on average compared to vehicles with automatic transmission. The average miles per gallon (mpg) for vehicles with manual transmission is 24.39231, while for automatic transmission, it is 17.14737.
+
+### Window Functions
+
+**[-/2]**
+
+
+In class, and in Wickham, we discussed 'window functions' that allow us to apply functions (in particular `mutate` transformations) to groups.
+
+Below, you will practice doing a *series* of transforms.  First, use the `group_by` transform to group the dataset by transmission type.  Then, use the `mutate` transform to the calculate the difference between each observation's `mpg` and the average `mpg` *for that group*.  Make sure to *subtract the average from* `mpg`; if you do it the other way around, you will not be able to answer the following questions correctly.  Name your new variable `mpg_diff`.  Next, use `select` to cull your tibble to only show the variables `car_type`, `am`, `mpg`, and `mpg_diff`, in that order.  Finally, `arrange` the tibble first by transmission type, then from greatest `mpg_diff` to lowest `mpg_diff`.
+
+```{r mpg-diff}
+
+# Perform the sequence of transformations
+mtcars.tib %>%
+  group_by(am) %>%
+  mutate(mpg_diff = mpg - mean(mpg)) %>%
+  select(car_type, am, mpg, mpg_diff) %>%
+  arrange(am, desc(mpg_diff))
+
+```
+
+Use your results to answer the following questions.
+
+**Amongst the cars with *automatic* transmission, which has the greatest `mpg_diff`?**  
+
+*your answer here*
+
+Based on the results, the car with the greatest mpg_diff among those with automatic transmission is the "Merc 240D" with an mpg_diff of 7.2526316.
+
+**Amongst the cars with *manual* transmission, which has the greatest `mpg_diff`?**  
+
+*your answer here*
+
+From the results, the car with the greatest mpg_diff among those with manual transmission is the "Toyota Corolla" with an mpg_diff of 9.5076923.
+
+
+# Visualization and EDA
+
+In the last few sessions we have introduced the grammar of graphics. In this exercise we will work through some practice exercises based on the examples in Wickham and Healy.  Given the exercises above are based on the `mtcars` dataset, it is somewhat appropriate that we will be working with the `mpg` dataset from the `tidyverse` package.  As before, to learn more about this dataset, invoke `?mpg` on the console to familiarize yourself with the variables.
+
+The learning exercises below are worth the remaining 10/20 points for this assessment.
+
+## Learning Exercise Notes
+
+**In the following exercises you will be reusing the code from previous exercises.  Where an exercise says *build on* it means you should copy the relevant code from the previous exercises then modify that code to provide the solution to the current exercise.**  
+
+**A tibble entitled `mpg_js.tib` has been included to make sure some of the later exercise prompts show up correctly.  You must still create the tibble `mpg.tib` for use in your solutions.  You can use this tibble to *compare* with your solutions.**
+
+## Barplots of Mileage
+
+The exercises in this subsection are worth a total of 2 points.
+
+In these exercises we will use a few simple barplots to drive home some of the common pragmas in the grammar of graphics.
+
+### More Fun With Factors
+
+**[-/0.4]**
+
+You can't get away from factors.  A number of the variables in `mpg` are strings (`<chr>`) but should really be factors.  Write the code that creates a tibble named `mpg.tib` that transforms `manufacturer`, `model`, `cyl`, `trans`, `drv`, `fl`, into unordered factors and `class` into an ordered factor with the ordering (from least to greatest): `2seater`, `subcompact`, `compact`, `midsize`, `minivan`, `pickup`, `suv`.  As usual, show the tibble `mpg.tib`.
+
+*Remember, `View` is only for use in the console, not `.Rmd` files.*
+
+```{r mpg-tib-factor, echo=FALSE}
+
+# Create mpg.tib with specified variables as factors
+mpg.tib <- mpg %>%
+  mutate(
+    manufacturer = as.factor(manufacturer),
+    model = as.factor(model),
+    cyl = as.factor(cyl),
+    trans = as.factor(trans),
+    drv = as.factor(drv),
+    fl = as.factor(fl),
+    class = factor(class, levels = c("2seater", "subcompact", "compact", "midsize", "minivan", "pickup", "suv"), ordered = TRUE)
+  )
+
+# Show the tibble mpg.tib
+mpg.tib
+
+```
+
+
+### Simple Counts
+
+**[-/0.4]**
+
+To understand this data, we want some simple counts of the types of vehicles.  In the chunk below use `geom_bar` to show the counts of different vehicle `manufacturer`s in `mpg.tib`.
+
+```{r mpg-bar}
+
+# Create a barplot for vehicle manufacturers
+ggplot(mpg.tib, aes(x = manufacturer)) +
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) # Rotate the x labels for readability
+
+```
+
+We will fix the `x` aesthetic's labels shortly.  Aside from that, answer the following:
+
+**Which manufacturer has the most representation in this dataset?**
+
+*Answer*
+
+In the dataset depicted in the barplot, the manufacturer with the most representation is Dodge.
+
+### Do Colors Help?
+
+**[-/0.4]**
+
+Recall the diagram in Healy (and in our lecture) that highlights the graph layering workflow.  When you modify your code above for the next exercise, remember the calls to `theme` above should be your last invocations, they are just modifying the decorations.
+
+The code to remove the ticks and labels from the x-axis is:
+
+```{r x-axis, echo=TRUE, eval=FALSE}
+  theme( axis.title.x = element_blank(),
+         axis.text.x  = element_blank(),
+         axis.ticks.x = element_blank()
+       )
+```
+
+In the chunk below, copy the code from your previous solution and modify as described below.  In this exercise (and those that follow), it may be useful to do each of the steps below *one at a time* (use the green arrow in the upper right of the chunk to run the code), testing to ensure that *each* change does what you expect, before adding the next.  This also helps build your intuition on how these layers build on one another.
+
+  1. add the `theme` modifications above to remove x-axis ticks, labels, and title, create the graph to validate
+  1. map `manufacturer` to the `color` aesthetic (remembering this should go *above* the `theme` code you just added), then create the graph to see the effect
+  1. map `manufacturer` to the `fill` aesthetic
+
+```{r mpg-bar-makes-color}
+
+# Create a barplot for vehicle manufacturers with aesthetic modifications
+ggplot(mpg.tib, aes(x = manufacturer)) +
+  geom_bar(aes(color = manufacturer)) + # Map manufacturer to the color aesthetic
+  geom_bar(aes(fill = manufacturer)) +  # Map manufacturer to the fill aesthetic
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+```
+
+### Preparing the Data Differently
+
+**[-/0.4]**
+
+As noted by Healy, sometimes letting the `geom`s do some of the work for you is useful, other times it is not.  Recall that we highlighted that `geom_col` is an alternative that lets you specify an `x` aesthetic and a `y` aesthetic, which `geom_col` will happily graph for you.  While the following is a simple transform, as we progress in the development of visualizations that do *exactly* what we want, we should think on what kind of data pre-processing is necessary for the kinds of visualizations we would like to create.
+
+In the following, use `group_by` and `summarize` to 
+
+  1. create counts for each `manufacturer`, name that variable `count`
+  1. `arrange` those in descending order
+  1. then create a plot similar to that above (using the same aesthetics) using `geom_col`
+
+Note, just because you arrange *your tibble* in descending order, that does not mean the ordering in *the plot* will be in that order.  If you use `geom_col` below, but the columns are still in *alphabetical* order, you got it right.  We will look at how to `reorder` factors in the next exercise.
+
+```{r mpg-col-makes-color}
+
+# Create a tibble with counts for each manufacturer arranged in descending order
+manufacturer_counts <- mpg.tib %>%
+  group_by(manufacturer) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+# Create a plot using geom_col with the same aesthetics as before
+ggplot(manufacturer_counts, aes(x = manufacturer, y = count, fill = manufacturer)) +
+  geom_col() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+```
+
+
+### Reordering the Columns
+
+**[-/0.4]**
+
+This exercise will illustrate how the order of *the levels* in a factor affects how it is plotted.  The `reorder` function allows us to change the order of the values in a factor.  Here, we are going to change the order to match the descending order of the `count` variable you created earlier.  *Hint: Recall we saw an illustration of how to use reorder in the lecture slides.*
+
+Copy the code from your previous solution and use `reorder` to display the columns in *descending* order (from the manufacturer with the most vehicles represented to the manufacturer with least.
+
+```{r mpg-col-makes-reorder}
+
+# Create a tibble with counts for each manufacturer arranged in descending order
+manufacturer_counts <- mpg.tib %>%
+  group_by(manufacturer) %>%
+  summarize(count = n(), .groups = "drop") # Drop the grouping for further use
+
+# Create a plot using geom_col and reorder the manufacturer factor
+ggplot(manufacturer_counts, aes(x = reorder(manufacturer, -count), y = count, fill = manufacturer)) +
+  geom_col() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+```
+
+Notice here that *the columns* are ordered by `-count` but the factor levels remain in the default alphabetic ordering for unordered factors.
+
+
+## Fuel Efficiency Scatterplots 
+
+The exercises in this subsection are worth a total of 4 points.  
+
+In the next group of exercises, we are going to practice with some of the more common aesthetics available for scatterplots.
+
+### Plotting Specific Manufacturers
+
+**[-/0.5]**
+
+We're a picky bunch, so in this first exercise, we're not going to view all the vehicles in this dataset, just a few makes we are interested in.  In the chunk below, write the code that first filters `mpg.tib` to include only `audi`, `jeep`, `land rover`, `subaru` or `volkswagen`.  Remember our friend the `%in%` function from lecture. Generate a scatterplot that maps 
+
+  1. engine displacement (`displ`) to the `x` aesthetic, 
+  1. highway gas mileage (`hwy`) to the `y` aesthetic, and 
+  1. the manufacturer (`manufacturer`) to the color aesthetic
+
+Display that scatterplot.
+
+```{r mpg-fancy-cars}
+
+# Filter mpg.tib for specific manufacturers
+specific_makes <- mpg.tib %>%
+  filter(manufacturer %in% c("audi", "jeep", "land rover", "subaru", "volkswagen"))
+
+# Generate a scatterplot for the filtered data
+ggplot(specific_makes, aes(x = displ, y = hwy, color = manufacturer)) +
+  geom_point() +
+  theme_minimal()  # Use a minimal theme for a clean look
+
+```
+
+
+### Adding the Size Aesthetic
+
+**[-/0.5]**
+
+Wickham introduced the `size` aesthetic in the readings and we've seen it in lecture.  Building on the code in the previous exercise, in the chunk below
+
+  1. add the mapping of `class` to the `size` aesthetic, and 
+  1. make the points a bit translucent so we can identify overlaps created by our new size aesthetic
+
+```{r mpg-size}
+
+# Filter mpg.tib for specific manufacturers
+specific_makes <- mpg.tib %>%
+  filter(manufacturer %in% c("audi", "jeep", "land rover", "subaru", "volkswagen"))
+
+# Generate a scatterplot with class mapped to the size aesthetic and adjust point transparency
+ggplot(specific_makes, aes(x = displ, y = hwy, color = manufacturer, size = class)) +
+  geom_point(alpha = 0.6) + # Adjust alpha for point transparency
+  theme_minimal()  # Use a minimal theme for a clean look
+
+```
+
+Based on your graph, answer the following question:
+
+**Is it a coincidence that the order of the `class` variables in the legend is the same as the order of the levels in the corresponding factor?**
+
+*Answer*
+
+No, it is not a coincidence that the order of the `class` variables in the legend matches the order of the levels in the corresponding factor. In `ggplot2`, the legend is generated based on the factor levels of the aesthetic attributes. Since `class` was turned into an ordered factor earlier in the exercises, the order of its levels is used to determine the order in the legend.
+
+When a factor is used in a plot, `ggplot2` respects the order of the factor levels both in the plot itself and in the legend. If `class` had been an unordered factor, the levels would likely appear in alphabetical order unless manually adjusted. However, because `class` was explicitly ordered when the factor was created, this ordering is reflected in the legend.
+
+
+
+### Comparing Manual and Automatic
+
+**[-/1]**
+
+In the last set of learning exercises, we compared manual versus automatic transmission.  Here we will do the same.  Uncommnting the code below will add the `trans_simple` factor to your tibble.
+
+```{r mpg-add-trans-simple, echo=TRUE}
+  mpg.tib <- mpg.tib %>%
+  mutate(trans_simple = factor(ifelse(str_detect(trans, "manual"), 
+                                      "manual", 
+                                      "automatic")))
+```
+
+
+In the chunk below, use `select` to take a look at the variable `trans` and `trans_simple` (I added that for this exercise).  We want a graph with the following features:
+
+  - all of the data points (no filtering), 
+  - comparing displacement with highway gas mileage, 
+  - a scatterplot for which the `class` variable is mapped to the `size` aesthetic, 
+  - for the points to be transparent, creating a background effect, 
+  - two smooth trend lines (use the default method) representing the trends corresponding to the categories `manual` and `automatic`, 
+  - each line should be a different color, and, finally,
+  - no standard errors ribbon
+
+Display this plot.
+
+To complement this plot, following the code for your graph, use `group_by` and `summarize` to calculate the average highway mpg for vehicles with `automatic` and `manual` transmissions, arranging the results in descending order.  Name this tibble `mpg_trans_summ.tib` and display that tibble.
+
+Complete these tasks in the chunk below.
+
+```{r mpg-trans}
+
+# Inspect the trans and trans_simple variables
+mpg.tib %>%
+  select(trans, trans_simple)
+
+# Create the scatterplot
+scatter_plot <- ggplot(mpg.tib, aes(x = displ, y = hwy, size = class, color = trans_simple)) +
+  geom_point(alpha = 0.4) +  # Make points slightly transparent
+  geom_smooth(method = "loess", aes(group = trans_simple), se = FALSE) +  # Add smooth trend lines without standard error ribbon
+  theme_minimal()  # Use a minimal theme for a clean look
+
+# Display the plot
+print(scatter_plot)
+
+# Calculate the average highway mpg for each transmission type and arrange in descending order
+mpg_trans_summ.tib <- mpg.tib %>%
+  group_by(trans_simple) %>%
+  summarize(avg_hwy = mean(hwy), .groups = "drop") %>%
+  arrange(desc(avg_hwy))
+
+# Display the summarized tibble
+mpg_trans_summ.tib
+
+```
+
+Recall from your RMarkdown readings we can use the results of some of our calculations in our text.  For instance, review the code for the following assertion:  
+
+  > The average engine displacement (`displ` variable) in the `mpg` dataset is `r round( x = mean(mpg$displ), digits = 2)`.
+
+Using your graph and your newly created tibble, complete the following paragraph, filling in the two R expressions with the appropriate code.  *Remember, you can reference any of the variables you have created thus far, so using the values from `mpg_trans_summ.tib` would be a good idea.*
+
+**In this dataset, vehicles with an automatic transmission get a mean highway gas mileage of `r `; vehicles with a manual transmission get `r `.**
+
+Answer the following question:
+
+**Is there a range of displacement values where the graph seems to contradict the average?  In other words, is there a range for which the the mean misleading?  If so, based on your graph, what is that *approximate* range?**
+
+*Answer*
+
+Based on the scatterplot, there is an approximate range of engine displacement between 3.5 to 5.5 liters where vehicles with automatic transmissions show higher highway gas mileage than those with manual transmissions. This observation is contrary to the overall average which suggests that manual transmissions are generally more fuel-efficient. Thus, within this specific displacement range, the average may be misleading as it does not reflect the observed trend for individual vehicles.
+
+### Layering Highway and City
+
+**[-/1]**
+
+Notice that `mpg.tib` has both highway (`hwy`) and city (`cty`) gas mileage.  In the following graph, like the others, `displ` is mapped to the `x` aesthetic and gas mileage will be mapped to the `y` aesthetic.  Use what we have learned about layering to create a graph with the following layers:
+
+  - a scatter plot of our standard `hwy` and `displ` in *red*, with a relatively low transparency level (say, 0.2) and the `size` aesthetic mapped to `class`
+  - a scatter plot of `cty` and `displ` in *blue*, with a relatively low transparency level (say, 0.2) and the `size` aesthetic mapped to `class`
+  - a smooth, opaque red line showing the trend between `hwy` and `displ`
+  - a smooth, opaque blue line showing the trend between `cty` and `displ`
+  - change the label of the y-axis to 'mpg'
+  
+*Hint: Remember our discussions on layering and the scoping of aesthetic mappings.*
+
+```{r mpg-hwy-cty}
+
+# Ensure the mpg dataset is available; if not, load it from ggplot2
+if (!exists("mpg.tib")) {
+  mpg.tib <- as_tibble(ggplot2::mpg)
+}
+
+# Now, proceed with the plotting code
+optimized_plot <- ggplot(mpg.tib, aes(x = displ)) +
+  geom_point(aes(y = hwy, color = 'Highway', size = class), alpha = 0.2, shape = 16) +  # Adjust alpha to 0.2 and map size to class for highway
+  geom_point(aes(y = cty, color = 'City', size = class), alpha = 0.2, shape = 17) +  # Adjust alpha to 0.2 and map size to class for city
+  geom_smooth(aes(y = hwy, linetype = 'Highway Trend'), method = "loess", se = FALSE, color = 'red') +  # Smooth line for highway, removed size argument to use default
+  geom_smooth(aes(y = cty, linetype = 'City Trend'), method = "loess", se = FALSE, color = 'blue') +  # Smooth line for city, removed size argument to use default
+  scale_color_manual(values = c('Highway' = 'red', 'City' = 'blue')) +  # Set colors manually
+  scale_linetype_manual(values = c('Highway Trend' = "solid", 'City Trend' = "solid")) +  # Set line types manually
+  scale_size_discrete(name = "Vehicle Class") +  # Add a legend for sizes mapped to vehicle class
+  labs(y = 'mpg', color = 'Type of Mileage', linetype = 'Trend') +  # Rename the y-axis and legends appropriately
+  theme_minimal() +  # Use a minimal theme
+  theme(legend.position = "bottom")  # Move legend to the bottom
+
+# Display the optimized plot
+print(optimized_plot)
+
+
+
+
+
+
+
+```
+
+Now answer the following question:
+
+**Based on the graph, are there any vehicles with city mpg greater than the hwy mileage trend for approximately the same displacement?  In other words, are there any observations of city mpgs above the highway trend?  How many?**
+
+Based on the graph, a small number of vehicles exhibit city mpg figures that surpass the trend line for highway mpg at similar displacement levels, indicated by blue triangles positioned above the red trend line. While a precise count is not possible from the image alone, visual inspection suggests these cases are exceptions rather than the norm, as the majority of city mpg data points fall below the highway trend. This suggests that, as expected, vehicles tend to be more fuel-efficient on the highway than in the city, with only a few notable outliers.
+
+### Combining Mileage and Transmission
+
+**[-/1]**
+
+As a last exercise with mapping aesthetics, we will use the `fill` and `linetype` aesthetics to look at mileage trends across both city and highway mileage and manual and automatic transmissions.  In the following, draw a graph that:
+
+  - maps `displ` to the `x` aesthetic *for the entire plot*,
+  - maps the `trans_simple` to the `linetype` aesthetic *for the entire plot*,
+  - generate a smooth trend line for highway mileage, in red, also mapping the `fill` aesthetic to the constant value 'red' so the confidence intervals match the line color
+  - generate a smooth trend line for city mileage, in blue, also mapping the `fill` aesthetic to the constant value 'blue' so the confidence intervals match the line color
+  - change the label of the y-axis to 'mpg'
+
+```{r mpg-trans-hwy-cty}
+
+# Ensure the trans_simple factor exists in the dataset
+mpg.tib <- mpg.tib %>%
+  mutate(trans_simple = factor(ifelse(str_detect(trans, "manual"), "manual", "automatic")))
+
+# Create the plot
+ggplot(mpg.tib, aes(x = displ, linetype = trans_simple)) +
+  geom_smooth(aes(y = hwy, fill = 'red'), method = "loess", se = TRUE, color = 'red') +
+  geom_smooth(aes(y = cty, fill = 'blue'), method = "loess", se = TRUE, color = 'blue') +
+  scale_fill_manual(values = c('red' = 'red', 'blue' = 'blue')) +
+  labs(y = 'mpg', linetype = 'Transmission Type', fill = 'Confidence Interval') +
+  guides(fill = FALSE) +  # Hide the fill legend
+  theme_minimal()  # Use a minimal theme for a clean look
+
+
+```
+
+Now answer the following question:
+
+**Do the respective lines for highway and city cross following a similar pattern?**
+
+*Answer*
+
+Based on the graph, the respective lines for highway (red) and city (blue) mileage, representing trends for manual and automatic transmissions, do not appear to cross each other. Instead, they run parallel throughout the range of displacement values shown. The trend lines suggest that, regardless of transmission type, highway mileage is consistently higher than city mileage across the range of displacements. This pattern is consistent with the general expectation that vehicles tend to be more fuel-efficient on highways compared to city driving due to steady speeds and less frequent stops.
+
+
+## Adding "Dimensions" With Facets
+
+The exercises in this subsection are worth a total of 4 points.
+
+In this section we will walk through two simple applications of facets.  In the first, we will look at highway and city mpg across different vehicle drives: front-wheel, rear-wheel, and four-wheel.  Then we will facet by two values, drive and cylinders.
+
+### Factors Yet Again
+
+**[-/1]**
+
+To make our factors meaningful, we need to change the default labels of the values of `drv`.  Recall that `factor` can take three parameters that describe the factor:
+
+  - `x` the values comprising the variable
+  - `levels` the unique levels within that factor (we've done a number of exercises using this)
+  - `labels` the human readable strings corresponding to the levels; by default, `labels == levels`
+  
+We need to change the labels for `drv` to be "four-wheel", "front-wheel", and "rear-wheel".  We also need to change the `cyl` factor to add "cyl" to the end of each label; for instance, the level `6` in the `cyl` factor should become `6 cyl`.  For this latter part, modifying `cyl`, we will use the `str_c` function, which allows us to concatenate one set of strings onto another.  I provide an example below.
+
+```{r paste-example, echo=TRUE}
+## add "cyl" to end of each value
+( my.str <- str_c( c( "4", "5", "6", "8" ), c("cyl"), sep=" " ) )
+```
+
+Remember, you can get the levels for a factor with the, well, `levels` function.
+
+Write the code that mutates the `drv` and `cyl` variables in the tibble named `mpg.tib` to have these proper labels, then  name the new tibble `mpg_facets.tib`, `select`ing for `drv` and `cyl` to confirm your changes worked as expected.
+
+```{r mpg-drv-factor-labels}
+
+library(tidyverse)
+
+mpg.tib <- mpg.tib %>%
+  mutate(drv = factor(drv, levels = c("4", "f", "r"), labels = c("four-wheel", "front-wheel", "rear-wheel")),
+         cyl = factor(str_c(cyl, "cyl", sep=" ")))
+
+# Showing the new 'drv' and 'cyl' factors
+mpg.tib %>%
+  select(drv, cyl)
+
+
+```
+
+
+### Faceting by Drive
+
+**[-/1]**
+
+Now we can facet by drive.  Reproduce your graph comparing city and highway mpg in the previous section, **faceted by `drv`**.  **Remember to use our new tibble `mpg_facets.tib`!**  To remind you, the criteria for that graph are:
+
+  - a scatter plot of our standard `displ` and `hwy` in *red*, with a relatively low transparency level (say, 0.2) and the `size` aesthetic mapped to `class`
+  - a scatter plot of `displ` and `cty` in *blue*, with a relatively low transparency level (say, 0.2) and the `size` aesthetic mapped to `class`
+  - a smooth, opaque red line showing the trend between `hwy` and `displ`
+  - a smooth, opaque blue line showing the trend between `cty` and `displ`
+  - change the label of the y-axis to 'mpg'
+
+After you have created your graph, create the equivalent averages:
+
+  - `group_by` `drv`
+  - use `summarize` to calculate `mean_hwy` and `mean_cty`
+  - arrange in order of best mpg to worst (descending) by `mean_hwy`
+
+```{r mpg-cty-hwy-drive-facet}
+
+# Create a scatterplot faceted by 'drv' showing both highway and city mileage
+ggplot(mpg_facets.tib, aes(x = displ)) +
+  # Scatter plot for highway mileage in red
+  geom_point(aes(y = hwy, color = 'Highway', size = class), alpha = 0.2) +
+  # Scatter plot for city mileage in blue
+  geom_point(aes(y = cty, color = 'City', size = class), alpha = 0.2) +
+  # Smooth trend line for highway mileage in red
+  geom_smooth(aes(y = hwy, linetype = 'Highway Trend'), method = "loess", se = FALSE, color = 'red') +
+  # Smooth trend line for city mileage in blue
+  geom_smooth(aes(y = cty, linetype = 'City Trend'), method = "loess", se = FALSE, color = 'blue') +
+  # Manually set colors for the points
+  scale_color_manual(values = c('Highway' = 'red', 'City' = 'blue')) +
+  # Manually set line types for the trend lines
+  scale_linetype_manual(values = c('Highway Trend' = "solid", 'City Trend' = "solid")) +
+  # Label y-axis as 'mpg' and define legend titles
+  labs(y = 'mpg', color = 'Type of Mileage', linetype = 'Trend') +
+  # Facet the plot by 'drv' to create separate panels for each drive type
+  facet_wrap(~drv) +
+  # Use a minimal theme and move the legend to the bottom
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Calculate the average highway and city mpg for each drive type, sorting by highway mpg in descending order
+mpg_averages.tib <- mpg_facets.tib %>%
+  group_by(drv) %>%
+  summarize(mean_hwy = mean(hwy, na.rm = TRUE), mean_cty = mean(cty, na.rm = TRUE)) %>%
+  arrange(desc(mean_hwy))
+
+# Display the table with average values
+print(mpg_averages.tib)
+
+
+```
+
+Look at the trends across your facets and the averages.  Consider whether these seem to be consistent.  One of the benefits of faceting is to get more granular visualizations of different subsets of your data, observing where average (central) values meet your expectations, for which groups, and where those expectations begin to break down.
+
+Now answer the following questions based on these facets:
+
+**Recall that earlier we asked if there were vehicles for which city mileage was above the highway trend line.  Looking at your facets, which type of drive accounts for those vehicles?**
+
+*Answer*
+The type of drive that accounts for vehicles where city mileage is above the highway trend line seems to be the front-wheel drive (fwd). This can be inferred from the observation that front-wheel drive vehicles are typically smaller and more fuel-efficient in urban settings, where frequent acceleration and deceleration occur, compared to highway driving where the efficiency of rear-wheel and four-wheel drives can be more pronounced due to steady speeds.
+
+**Which type of drive has the most variance across the displacement values?  In other words, for which drive is the ribbon the widest for the majority of the data shown in that facet?**
+
+*Answer*
+
+The type of drive with the most variance across the displacement values, indicated by the widest ribbon for the majority of the data shown in that facet, is likely to be the four-wheel drive (4wd). Four-wheel drive vehicles often have a wider range of engine sizes and uses, from small off-road to large utility vehicles, leading to greater variability in their fuel economy across different displacements. The width of the ribbon in the facet plot typically represents the confidence interval around the trend line, which can be interpreted as variance in this context.
+
+### Faceting by Drive and Cylinders
+
+**[-/1]**
+
+In the window below, recreate the same graph, mapping `drv` to the "x" facet and `cyl` to the "y" facet, this should be a simple copy and paste from above, and a very small change to the facet call.
+
+```{r mpg-cty-hwy-drive-facet2}
+
+# Create the faceted scatterplot with trend lines and scatter plots
+optimized_plot <- ggplot(mpg_facets.tib, aes(x = displ)) +
+  # Add scatter plots for highway mileage in red
+  geom_point(aes(y = hwy, color = 'Highway', size = class), alpha = 0.2) +
+  # Add scatter plots for city mileage in blue
+  geom_point(aes(y = cty, color = 'City', size = class), alpha = 0.2) +
+  # Smooth trend line for highway mileage in red without confidence interval
+  geom_smooth(aes(y = hwy, linetype = 'Highway', color = 'Highway'), method = "loess", se = FALSE, size = 1) +
+  # Smooth trend line for city mileage in blue with confidence interval
+  geom_smooth(aes(y = cty, linetype = 'City', color = 'City'), method = "loess", se = TRUE, size = 1) +
+  # Manually set colors for the lines
+  scale_color_manual(values = c('Highway' = 'red', 'City' = 'blue')) +
+  # Manually set line types
+  scale_linetype_manual(values = c('Highway' = "solid", 'City' = "solid")) +
+  # Use a grid layout for faceting by 'drv' on the x-axis and 'cyl' on the y-axis
+  facet_wrap(drv ~ cyl) +
+  # Change label of y-axis to 'mpg' and adjust legends
+  labs(y = 'mpg', color = 'Type of Mileage', linetype = 'Type of Mileage') +
+  # Apply a minimal theme for a clean look
+  theme_minimal() +
+  # Move the legend to the bottom and remove the legend title for a cleaner appearance
+  theme(legend.position = "bottom", legend.title = element_blank())
+
+# Display the optimized plot
+print(optimized_plot)
+
+```
+
+Wait, this seems odd.  There are `r length(levels(mpg_js.tib$drv))` levels for `drv` and `r length(levels(mpg_js.tib$cyl))` for `cyl`.  Also notice that the previous sentence is another illustration of how to show R values *within* the text.
+
+  1. **How many facets did you expect based on the number of levels for `drv` and `cyl`?**
+    *Answer*
+    To determine the expected number of facets, we need to know the number of levels in each of the factors drv and cyl. For example, if drv had 3 levels (representing front-wheel, rear-wheel, and four-wheel drives) and cyl had 4 levels (representing 4, 5, 6, and 8 cylinders), then we would expect 3 * 4 = 12 facets in total.
+    
+  1. **How many are actually there?**  
+    *Answer*
+    There are actually 9 facets expected based on the number of levels for drv and cyl
+    
+    
+  1. **Why is this the case?**  
+    *Answer*
+    The reason for having fewer facets than the number of possible combinations of drv and cyl levels is that the dataset does not contain all possible combinations. Facets are created only for existing combinations in the data. If certain drv and cyl pairs don't exist, they won't have a corresponding facet.
+    
+### Is `facet_grid` better?
+
+**[-/1]**
+
+To provide some insight into the last question, consider to our visualization.  In the chunk below, copy the code from the previous exercise.  Change `facet_wrap` to `facet_grid` then re-generate the visualization.  
+
+```{r mpg-cty-hwy-drive-facet-grid}
+# Create the faceted scatterplot with trend lines and scatter plots
+optimized_plot <- ggplot(mpg_facets.tib, aes(x = displ)) +
+  # Add scatter plots for highway mileage in red
+  geom_point(aes(y = hwy, color = 'Highway', size = class), alpha = 0.2) +
+  # Add scatter plots for city mileage in blue
+  geom_point(aes(y = cty, color = 'City', size = class), alpha = 0.2) +
+  # Smooth trend line for highway mileage in red without confidence interval
+  geom_smooth(aes(y = hwy, linetype = 'Highway', color = 'Highway'), method = "loess", se = FALSE, size = 1) +
+  # Smooth trend line for city mileage in blue with confidence interval
+  geom_smooth(aes(y = cty, linetype = 'City', color = 'City'), method = "loess", se = TRUE, size = 1) +
+  # Manually set colors for the lines
+  scale_color_manual(values = c('Highway' = 'red', 'City' = 'blue')) +
+  # Manually set line types
+  scale_linetype_manual(values = c('Highway' = "solid", 'City' = "solid")) +
+  # Use a grid layout for faceting by 'drv' on the x-axis and 'cyl' on the y-axis
+  facet_grid(drv ~ cyl) +
+  # Change label of y-axis to 'mpg' and adjust legends
+  labs(y = 'mpg', color = 'Type of Mileage', linetype = 'Type of Mileage') +
+  # Apply a minimal theme for a clean look
+  theme_minimal() +
+  # Move the legend to the bottom and remove the legend title for a cleaner appearance
+  theme(legend.position = "bottom", legend.title = element_blank())
+
+# Display the optimized plot
+print(optimized_plot)
+```
+
+**What is the difference between `facet_wrap` and `facet_grid`?**
+
+*Answer*
+'facet_wrap' is adept at handling a single grouping factor by arranging the resulting plots in a wrapped layout, akin to words wrapping to a new line in a paragraph, allowing for an efficient use of space and an easy way to compare levels of a single variable. It automatically manages the layout to fit all panels in a compact form, making it particularly suitable for datasets with a large number of categories that need to be displayed in a series of plots aligned in rows or columns.
+
+'facet_grid', in contrast, excels at illustrating the relationship between two categorical variables by organizing the data into a grid that spans both rows and columns, offering a clear view of how the combination of two factors affects the data distribution. This method is ideal for exploring and visualizing the interactions between two different variables, providing a structured and comprehensive overview of the dataset in a two-dimensional layout.
+
+
+
+
+
+
+

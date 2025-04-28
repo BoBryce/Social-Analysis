@@ -1,0 +1,730 @@
+---
+title: "Final Project"
+author: "23041046"
+date: "`r Sys.Date()`"
+output:
+  bookdown::pdf_document2:
+    toc: false
+    keep_tex: false
+    number_sections: true
+urlcolor: blue
+geometry: margin=1in
+bibliography: ./references/STEP0056-ADSV-Wu.bib
+csl: ./references/chicago-author-date.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls())
+library(ggplot2)
+library(tibble) 
+library(magrittr)
+library(ggbeeswarm)
+library(carData)
+library(extrafont) 
+library(rmdwc)
+
+library(corrplot)
+library(ggalt)
+library(grid)
+library(gridExtra)
+library(tidyverse)
+library(maptools)
+library(factoextra)
+library(FactoMineR)
+
+library(bookdown)
+
+```
+
+**Word Count: `r rmdcount()$words`**
+
+```{r data manipulation, echo = FALSE, warning = FALSE}
+merged.tib <- read_csv("./data/merged.csv", 
+                       col_types = cols(
+                         Location = "f",
+                         Industry = "f",
+                         YEAR = "f"
+                       ), show_col_types = FALSE)
+
+# trim the ID
+merged.tib$ID <- trimws(tolower(merged.tib$ID))
+
+# delete Employees < 8 and Sales < 5000
+merged.tib <- merged.tib %>% filter(Employees >= 8, Sales >= 5000)
+
+# characterize location
+merged.tib$Location <- as.character(merged.tib$Location)
+
+merged.tib$Location <- ifelse(grepl("e", merged.tib$Location),
+                              sprintf("%.0f", as.numeric(merged.tib$Location)),
+                              merged.tib$Location)
+
+# generate the province code
+merged.tib$Province <- str_sub(merged.tib$Location, 1, 2)
+
+# calculate degree of state capital
+merged.tib$D_STATE <- merged.tib$STATE / merged.tib$TC
+
+# function to return industry code
+assign_label <- function(value) {
+  value_str <- as.character(round(value))
+  if (nchar(value_str) == 4) {
+    first_digits <- as.integer(substr(value_str, 1, 2))
+  } else if (nchar(value_str) %in% c(3, 2)) {
+    first_digits <- as.integer(substr(value_str, 1, 1))
+  } else {
+    return('Invalid')
+  }
+  return(first_digits)
+}
+
+# function to cluster the industries into 3 clusters
+assign_label_1 <- function(value) {
+  value_str <- as.character(round(value))
+  if (nchar(value_str) == 4) {
+    first_digits <- as.integer(substr(value_str, 1, 2))
+  } else if (nchar(value_str) %in% c(3, 2)) {
+    first_digits <- as.integer(substr(value_str, 1, 1))
+  } else {
+    return('Invalid')
+  }
+  
+  if (first_digits >= 6 & first_digits < 13) {
+    return('B')
+  } else if (first_digits >= 13 & first_digits < 44) {
+    return('C')
+  } else if (first_digits >= 44 & first_digits < 47) {
+    return('D')
+  }
+}
+
+# apply the functions
+merged.tib$Industry <- as.numeric(as.character(merged.tib$Industry))
+merged.tib$G_Industry <- sapply(merged.tib$Industry, assign_label)
+merged.tib$BG_Industry <- sapply(merged.tib$Industry, assign_label_1)
+
+# function to remove outliers
+remove_extreme_values <- function(df, column) {
+  lower_bound <- quantile(df[[column]], 0.005)
+  upper_bound <- quantile(df[[column]], 0.995)
+  df <- df %>% filter(df[[column]] > lower_bound & df[[column]] < upper_bound)
+  return(df)
+}
+
+# apply function
+key_indicator_columns <- c('Y', 'DEPR', 'TA', 'FC', 'WAGE', 'VAT', 'MED', 'TC')
+for (column in key_indicator_columns) {
+  merged.tib <- remove_extreme_values(merged.tib, column)
+}
+
+# calculations
+merged.tib <- merged.tib %>%
+  mutate(
+    PRO = (Y - MED - FC - WAGE - DEPR - VAT) / 1000,
+    TA_per_employee = (TA / Employees) + 1,
+    Kintensity = log(TA_per_employee)
+  )
+
+IndustrialData.tib <- drop_na(merged.tib)
+DataB.tib <- IndustrialData.tib %>% filter(BG_Industry == "B")
+DataC.tib <- IndustrialData.tib %>% filter(BG_Industry == "C")
+DataD.tib <- IndustrialData.tib %>% filter(BG_Industry == "D")
+
+```
+
+# Introduction {#sec:introduction}
+This study examines the relationship between state ownership, profitability, and capital intensity in China's industrial sectors, using data from the China National Bureau of Statistics and techniques like heatmaps and PCA. It aims to understand the economic and social impacts of state ownership on enterprise profitability amid China's rapid industrialization and economic reforms.
+
+China's economic transformation, initiated by reforms in the late 20th century, shifted its economy from primarily agrarian to a global industrial leader. This evolution was influenced by a mix of economic, social, and political factors, creating a complex landscape of state-owned and private enterprises [@allen2005law]. This paper builds on existing research, enhancing our understanding of how different regions and sectors have evolved under various degrees of state intervention and market liberalization.
+
+While previous research has explored the financial outcomes of privatization and the socio-political roles of state-owned enterprises (SOEs) [@kramer2005cooperative] [@naughton1994chinese] [@jefferson1994enterprise], there remains a significant gap in applying advanced statistical techniques like cluster analysis. This method, which has not been widely used in this context, helps identify unique groupings within the data, revealing underlying patterns and correlations that may be obscured by more conventional analyses [@oecd1999boosting, [chapter 17]]. Cluster analysis is vital for understanding the varied impacts of SOE reforms across China's diverse economic regions, offering insights into how different factors interact within the country's broad economic framework and enriching discussions on SOE transformations.
+
+The methodology involves an initial exploratory data analysis (EDA) to establish baseline patterns, followed by PCA to reduce dimensionality and enhance the clarity of the relationships among key variables. Our preliminary findings suggest a potential negative correlation between state ownership and profitability, challenging some traditional views and affirming others, thus opening avenues for further investigation.
+
+This paper is structured to methodically unfold the analyses and insights obtained, starting with an in-depth examination of regional and sectoral data through visualizations, moving into detailed cluster analysis, and culminating in a discussion of the implications of these findings. Following this introduction, Section 2 details the data selection and theoretical framework, Section 3.1 elaborates on the methodologies employed, and Section 3.2 presents the analysis and its results. The final two sections discuss the broader implications of the findings and outlines potential directions for future research.
+
+
+# Data {#sec:data}
+## Data Sets Used {#sec:data-sets}
+This study relies on a dataset from the China National Bureau of Statistics' Industrial Enterprise Database [@2020chinese], which records comprehensive information on industrial enterprises in Mainland China with annual sales over 5 million RMB. This database covers several sectors, including mining, manufacturing, and the production of utilities like electricity, gas, and water. Following the methodologies established [@brandt2014challenges], data from 1998 to 2003 and 2005 to 2007 was processed, excluding the year 2004 due to missing industrial value-added data.
+
+After initial filtering steps that removed enterprises with fewer than eight employees and those with sales under 5 million RMB, in line with previous research regarding accounting reliability in smaller firms [@jefferson2008productivity], and excluding extreme values as recommended [@cai2009competition], the dataset was refined to contain a total of 1,486,399 entries. These entries were categorized into three industrial sectors: 'B' for mining with 59,523 entries, 'C' for manufacturing with 1,392,152 entries, and 'D' for electricity, gas, and water supply with 34,664 entries.
+
+Further data processing included standardizing company IDs, transforming location data to numeric where necessary, and categorizing the industries into their respective sectors: 'B', 'C', and 'D'. Calculations for the ratio of state ownership and other financial metrics were also performed, and outliers within key financial indicators were excluded to ensure the accuracy of the subsequent analysis.
+
+Given the distribution of the dataset across the different sectors, a stratified sampling approach was used to draw a balanced representation of 200 companies from each industry sector (B, C, and D) each year, ensuring geographical diversity. This sampling method was proportionally based on the presence of firms within each sector, allowing the study to reflect the industry-specific dynamics and the provincial distribution of China's industrial landscape.
+
+This approach ensures a robust dataset for detailed analysis, which is both representative of the various industries and consistent over the selected years, providing a strong foundation for evaluating the industrial sector trends in China.
+
+
+## Variables of Interest {#sec:variables-of-interest}
+In this study, the variables of interest include the dependent variable, which is the profit level of enterprises (PRO), measured as imputed profit. The decision to use imputed profit instead of reported profit accounts for potential under-reporting in competitive markets for tax evasion reasons [@cai2009competition], as well as changes in accounting standards over the study period. Imputed profit is calculated by subtracting various costs and taxes, such as total intermediate input, financial expenses, total wages payable, depreciation, and value-added tax payable, from the total industrial output. This comprehensive calculation offers a more accurate reflection of enterprise profitability.
+
+```{r data pre, echo = FALSE, warning = FALSE}
+# for reproduction
+set.seed(33)
+
+# filter ID existing every year, keep Province included
+ids_in_all_years <- DataB.tib %>%
+  group_by(ID, Province) %>%  # keep Province included
+  summarise(count_years = n_distinct(YEAR), .groups = 'drop') %>%
+  filter(count_years == 9)
+
+province_id_counts <- ids_in_all_years %>%
+  count(Province)
+
+total_ids <- sum(province_id_counts$n)
+province_ratios <- province_id_counts %>%
+  mutate(proportion = n / total_ids)
+
+# select samples with ratio of the count of Province
+province_ratios <- province_ratios %>%
+  mutate(ids_to_sample = ceiling(proportion * 200))
+
+while(sum(province_ratios$ids_to_sample) > 200) {
+  over_sampled <- sum(province_ratios$ids_to_sample) - 200
+  province_ratios <- province_ratios %>%
+    mutate(ids_to_sample = if_else(n == max(n), ids_to_sample - over_sampled, ids_to_sample))
+}
+
+sampled_ids <- map2_df(province_ratios$Province, province_ratios$ids_to_sample, ~{
+  ids_in_all_years %>%
+    filter(Province == .x) %>%
+    sample_n(size = .y)
+})
+
+DataB.tib <- DataB.tib %>%
+  semi_join(sampled_ids, by = "ID") %>%
+  distinct(ID, YEAR, .keep_all = TRUE)
+
+
+
+# filter ID existing every year, keep Province included
+ids_in_all_years <- DataC.tib %>%
+  group_by(ID, Province) %>%  # keep Province included
+  summarise(count_years = n_distinct(YEAR), .groups = 'drop') %>%
+  filter(count_years == 9)
+
+province_id_counts <- ids_in_all_years %>%
+  count(Province)
+
+total_ids <- sum(province_id_counts$n)
+province_ratios <- province_id_counts %>%
+  mutate(proportion = n / total_ids)
+
+# select samples with ratio of the count of Province
+province_ratios <- province_ratios %>%
+  mutate(ids_to_sample = ceiling(proportion * 200))
+
+while(sum(province_ratios$ids_to_sample) > 200) {
+  over_sampled <- sum(province_ratios$ids_to_sample) - 200
+  province_ratios <- province_ratios %>%
+    mutate(ids_to_sample = if_else(n == max(n), ids_to_sample - over_sampled, ids_to_sample))
+}
+
+sampled_ids <- map2_df(province_ratios$Province, province_ratios$ids_to_sample, ~{
+  ids_in_all_years %>%
+    filter(Province == .x) %>%
+    sample_n(size = .y)
+})
+
+DataC.tib <- DataC.tib %>%
+  semi_join(sampled_ids, by = "ID") %>%
+  distinct(ID, YEAR, .keep_all = TRUE)
+
+
+
+# filter ID existing every year, keep Province included
+ids_in_all_years <- DataD.tib %>%
+  group_by(ID, Province) %>%  # keep Province included
+  summarise(count_years = n_distinct(YEAR), .groups = 'drop') %>%
+  filter(count_years == 9)
+
+province_id_counts <- ids_in_all_years %>%
+  count(Province)
+
+total_ids <- sum(province_id_counts$n)
+province_ratios <- province_id_counts %>%
+  mutate(proportion = n / total_ids)
+
+# select samples with ratio of the count of Province
+province_ratios <- province_ratios %>%
+  mutate(ids_to_sample = ceiling(proportion * 200))
+
+while(sum(province_ratios$ids_to_sample) > 200) {
+  over_sampled <- sum(province_ratios$ids_to_sample) - 200
+  province_ratios <- province_ratios %>%
+    mutate(ids_to_sample = if_else(n == max(n), ids_to_sample - over_sampled, ids_to_sample))
+}
+
+sampled_ids <- map2_df(province_ratios$Province, province_ratios$ids_to_sample, ~{
+  ids_in_all_years %>%
+    filter(Province == .x) %>%
+    sample_n(size = .y)
+})
+
+DataD.tib <- DataD.tib %>%
+  semi_join(sampled_ids, by = "ID") %>%
+  distinct(ID, YEAR, .keep_all = TRUE)
+
+
+IndustrialData.tib <- DataB.tib %>% 
+  bind_rows(DataC.tib) %>%
+  bind_rows(DataD.tib)
+
+```
+In this study, the core independent variable D_STATE measures the degree of state ownership in enterprises, offering a nuanced view of state capital's impact during economic reforms [@bai2009how]. Kintensity, another key variable, represents capital intensity and is calculated as the logarithm of the capital-labor ratio, shedding light on resource allocation efficiency [@arai2003wages]. Additionally, the Herfindahl-Hirschman Index (HHI) is used to evaluate market concentration by summing the squared market shares of firms, providing insights into industry competition and dominance by large firms [@rhoades1993herfindahlhirschman].
+
+The data sets are expected to reveal insights into the relationship between state ownership, capital intensity, market concentration and enterprise profitability during the study period. It is anticipated that enterprises with higher levels of state ownership may exhibit different profitability patterns compared to those with lower levels of state involvement. Similarly, the relationship between capital intensity and profitability is expected to provide valuable insights into the production dynamics within enterprises.
+
+However, the data may have limitations. For instance, imputed profit calculations rely on various assumptions and estimations, which may introduce measurement errors. Additionally, the exclusion of certain observations based on criteria such as workforce size and sales revenue may affect the representativeness of the sample. These limitations could impact the generalizability of the findings and the robustness of the conclusions drawn from the analysis.
+
+When initially identifying the relationships, it was hypothesized that higher degrees of state ownership might lead to lower profit levels. By mapping and clustering, my analysis seeks to find more evidence to support or counter this hypothesis.
+
+
+# Analysis {#sec:analysis}
+## Summary of EDA {#sec:eda-summary}
+```{r box-graph, echo = FALSE, fig.width=6, fig.height=3, fig.pos = 'h', fig.cap = 'Boxplot of Variables of Interest', warning=FALSE}
+
+p1 <- ggplot(IndustrialData.tib, aes(y = PRO)) + 
+  geom_boxplot(outlier.alpha = 0.03) +
+  labs(title = "Boxplot of PRO", y = "PRO Values") +
+  theme_minimal() +
+  ylim(-10, 10) +
+  theme(
+    plot.title = element_text(size = 10),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8)
+  )
+
+p2 <- ggplot(IndustrialData.tib, aes(y = D_STATE)) + 
+  geom_boxplot(outlier.alpha = 0.03) +
+  labs(title = "Boxplot of D_STATE", y = "D_STATE Values") +
+  theme_minimal() +
+  ylim(-1, 2) +
+  theme(
+    plot.title = element_text(size = 10),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8)
+  )
+
+p3 <- ggplot(IndustrialData.tib, aes(y = Kintensity)) + 
+  geom_boxplot(outlier.alpha = 0.03) +
+  labs(title = "Boxplot of Kintensity", y = "Kintensity Values") +
+  theme_minimal() +
+  ylim(1, 8) +
+  theme(
+    plot.title = element_text(size = 10),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8)
+  )
+
+p4 <- ggplot(IndustrialData.tib, aes(y = HHI)) + 
+  geom_boxplot(outlier.alpha = 0.03) +
+  labs(title = "Boxplot of HHI", y = "HHI Values") +
+  theme_minimal() +
+  ylim(0, 0.1) +
+  theme(
+    plot.title = element_text(size = 10),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8)
+  )
+
+grid.arrange(p1, p2, p3, p4, ncol = 4)
+
+
+```
+
+The boxplots Figure \@ref(fig:box-graph) of key variables—PRO (Profitability), D_STATE (State Ownership), Kintensity (Capital Intensity), and HHI (Market Concentration)—illustrate diverse distributions across China's industrial sectors from 1998 to 2007. Profitability shows a broad range with significant outliers, indicating extreme profit values. State ownership is distributed within 0 and 1. Capital intensity remains consistent with notable outliers suggesting higher investments in some enterprises. Market concentration is predominantly low, with outliers indicating a few highly concentrated industries. For a detailed EDA analysis, turn to Appendix \@ref(app:eda).
+
+## Detailed Analysis {#sec:detailed-analysis}
+```{r mapping-graph, echo = FALSE, fig.width=8, fig.height=4, fig.pos = 'h', fig.cap = 'China data overview', message=FALSE, warning=FALSE}
+
+# calculate average profit for each province
+average_pro_by_province <- IndustrialData.tib %>%
+  group_by(Province) %>%
+  summarise(Average_PRO = mean(PRO, na.rm = TRUE),
+            Average_STATE = mean(D_STATE, na.rm = TRUE)) %>%
+  mutate(ADCODE99 = paste0(Province, "0000"))
+
+# read the map shape
+china_map=readShapePoly("mapdata/bou2_4p.shp")
+
+x <- china_map@data #read the data
+xs <- data.frame(x,id=as.character(seq(0:924)-1)) #create id for join
+china_map1 <- fortify(china_map)
+china_map_data <- full_join(china_map1, xs, by = "id") 
+china_map_data$ADCODE99 <- as.character(china_map_data$ADCODE99)
+china_data <- full_join(china_map_data, average_pro_by_province, by = "ADCODE99")
+
+p1 <- ggplot(
+  china_data, 
+  aes(x = long, y = lat, group = group, fill = Average_PRO)) +
+  geom_polygon(colour="grey40") +
+  scale_fill_gradient(low="lightgoldenrodyellow",high="darkred") +  
+  coord_map("polyconic")+ 
+  theme(
+    panel.grid=element_blank(),
+    panel.background=element_blank(),
+    axis.text=element_blank(),
+    axis.ticks=element_blank(),
+    axis.title=element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 6),
+    legend.text = element_text(size = 4)
+  )
+
+p2 <- ggplot(
+  china_data, 
+  aes(x = long, y = lat, group = group, fill = Average_STATE)) +
+  geom_polygon(colour="grey40") +
+  scale_fill_gradient(low="lightgoldenrodyellow",high="darkred") +  
+  coord_map("polyconic")+ 
+  theme(
+    panel.grid=element_blank(),
+    panel.background=element_blank(),
+    axis.text=element_blank(),
+    axis.ticks=element_blank(),
+    axis.title=element_blank(),
+    legend.position = "bottom",
+    legend.title = element_text(size = 6),
+    legend.text = element_text(size = 4)
+  )
+
+grid.arrange(p1, p2, ncol = 2, 
+             top = textGrob("China Data Overview", 
+                            gp = gpar(fontsize = 10, font = 2)))
+
+
+```
+
+Figure \@ref(fig:mapping-graph) presents two heatmaps superimposed on the map of China, visualizing data related to enterprises’ profit levels (PRO) and the degree of state ownership (D_STATE) across various regions.
+
+The heatmaps presented illustrate the geographic distribution of average profit levels (PRO) and the degree of state ownership (D_STATE) across China.  The first heatmap shows higher profits predominantly in the eastern, more developed regions, suggesting these areas benefit from better infrastructure and market access.  The second heatmap displays greater state ownership in the less developed western regions, possibly reflecting government initiatives to foster development through state-owned enterprises.  These visualizations hint at an inverse relationship between profitability and state ownership across different regions.  This pattern underscores regional economic disparities [@demurger2001infrastructure] and ownership structures within China, offering insights that are crucial for stakeholders analyzing the country's industrial landscape.
+
+However, while heatmaps provide a clear visual summary of these trends, they may oversimplify complex data and do not explain causal relationships, necessitating further detailed analysis to understand the underlying factors.
+
+```{r cluster-op-prep, echo = FALSE, fig.show="hide", warning=FALSE}
+
+DataB_kc.tib <- DataB.tib %>% 
+  filter(BG_Industry == "B") %>%
+  distinct(ID, YEAR, .keep_all = TRUE) %>%
+  select(PRO, D_STATE, Kintensity, HHI)
+DataC_kc.tib <- DataC.tib %>% 
+  filter(BG_Industry == "C") %>%
+  distinct(ID, YEAR, .keep_all = TRUE) %>%
+  select(PRO, D_STATE, Kintensity, HHI)
+DataD_kc.tib <- DataD.tib %>% 
+  filter(BG_Industry == "D") %>%
+  distinct(ID, YEAR, .keep_all = TRUE) %>%
+  select(PRO, D_STATE, Kintensity, HHI)
+
+# create lists
+data_list <- list(DataB_kc.tib, DataC_kc.tib, DataD_kc.tib)
+data_names <- c("DataB_kc.tib", "DataC_kc.tib", "DataD_kc.tib")
+
+plots <- list()
+
+# for loop
+for (i in seq_along(data_list)) {
+  p1 <- fviz_nbclust(scale(data_list[[i]]),
+                       FUN = kmeans, method = "wss") +
+    geom_vline(xintercept = 5, color = "blue", linetype = "dashed") +
+    labs(title = paste("Elbow Method for", data_names[i])) +
+  theme(
+    plot.title = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title = element_text(size = 6),
+    legend.text = element_text(size = 6),
+    legend.title = element_text(size = 6)
+  )
+  
+  p2 <- fviz_nbclust(scale(data_list[[i]]),
+                       FUN = kmeans, method = "silhouette") +
+    labs(title = paste("Silhouette Method for", data_names[i])) +
+  theme(
+    plot.title = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    axis.title = element_text(size = 6),
+    legend.text = element_text(size = 6),
+    legend.title = element_text(size = 6)
+  )
+  
+  gp <- grid.arrange(p1, p2, ncol = 2, 
+             top = textGrob(paste("Cluster Optimization", data_names[i]), 
+                            gp = gpar(fontsize = 10, font = 2)))
+  
+  plots[[i]] <- gp
+}
+
+
+```
+```{r cluster-op-graph, echo = FALSE, fig.width=6, fig.height=6, fig.pos = 'h', fig.cap = 'Cluster Optimizations', warning=FALSE}
+
+grid.arrange(grobs = plots, ncol = 1)
+
+```
+
+Figure \@ref(fig:cluster-op-graph) demonstrates the application of the elbow and silhouette methods to determine the optimal number of clusters for k-means clustering analysis across three datasets: "DataB_kc.tib", "DataC_kc.tib", and "DataD_kc.tib". The elbow method identifies the point where the increase in the number of clusters no longer significantly decreases within-cluster variance, while the silhouette method assesses cluster cohesion and separation.
+
+For "DataB_kc.tib", elbow method agree on an optimal four clusters, suggesting clear and distinct groupings. "DataC_kc.tib" shows a more complex structure, where five clusters are identified as optimal, indicating a need for more granularity to capture the dataset's nuances. In contrast, "DataD_kc.tib" is best represented with two clusters, as supported by silhouette method, indicating a simpler, more homogenous data structure.
+
+The chosen cluster numbers—4 for "DataB_kc.tib", 5 for "DataC_kc.tib", and 2 for "DataD_kc.tib"—are based on maximizing the clarity of data interpretation and ensuring the model's generalizability. This tailored approach enhances the utility of cluster analysis for each specific dataset, aiding stakeholders and analysts in their decision-making processes.
+```{r cluster_creation, echo = FALSE, fig.show="hide", warning=FALSE}
+
+# value of k
+centers_list <- list(DataB_kc.tib = 4, DataC_kc.tib = 5, DataD_kc.tib = 2)
+
+
+screes <- list()
+
+# for loop
+for (name in seq_along(data_list)) {
+  # k-means clustering
+  data_scaled <- scale(data_list[[name]])
+  centers <- centers_list[[name]]
+  kclust <- kmeans(data_scaled, centers = centers, nstart = 100)
+
+  data_clustered <- data_list[[name]] %>%
+    bind_cols(cluster_k = factor(kclust$cluster))
+  
+  # commit PCA
+  pca_results <- PCA(data_clustered %>% select(-cluster_k), graph = FALSE)
+  data_pca <- data_clustered %>%
+    bind_cols(as_tibble(pca_results$ind$coord))
+  
+  # draw cluster graph
+  plot <- fviz_cluster(list(data = data_pca %>% select(-cluster_k), cluster = data_pca$cluster_k),
+                       geom = "point", pointsize = 0.5) +
+    ggtitle(paste("Clustering for", data_names[name])) +
+    theme(plot.title = element_text(size = 6),
+          axis.text.x = element_text(size = 8),
+          axis.text.y = element_text(size = 8),
+          axis.title.x = element_text(size = 8),
+          axis.title.y = element_text(size = 8),
+          legend.title = element_text(size = 8),
+          legend.text = element_text(size = 8))
+  
+  p1 <- fviz_contrib(pca_results, choice = "var", axes = 1) +
+    theme(
+      plot.title = element_text(size = 6),
+      axis.text.x = element_text(size = 6),
+      axis.text.y = element_text(size = 6),
+      axis.title.x = element_text(size = 8),
+      axis.title.y = element_text(size = 8)
+    )
+  p2 <- fviz_contrib(pca_results, choice = "var", axes = 2) +
+    theme(
+      plot.title = element_text(size = 6),
+      axis.text.x = element_text(size = 6),
+      axis.text.y = element_text(size = 6),
+      axis.title.x = element_text(size = 8),
+      axis.title.y = element_text(size = 8)
+    )
+  gp <- grid.arrange(plot, p1, p2, ncol = 3, widths = c(2.5, 1, 1))
+  
+  screes[[name]] <- gp
+}
+
+```
+
+```{r cluster-plotB, echo = FALSE, fig.width=8, fig.height=3, fig.pos = 'h', fig.cap = 'Cluster Result B', warning=FALSE}
+
+grid.arrange(grobs = screes[1], ncol = 1)
+
+```
+
+The cluster analysis for “mining” illustrated in Figure \@ref(fig:cluster-plotB) uses a two-dimensional PCA projection to differentiate three clusters identified by color: red for Cluster 1, green for Cluster 2, blue for Cluster 3, and purple for cluster 4. These clusters are outlined by convex hulls for clarity.
+
+Dim.1, capturing 35.3% of the variance, is predominantly influenced by PRO (Profitability), showing that Cluster 4, which stretches along this dimension, includes enterprises with varying levels of profitability, independent of their capital intensity (Kintensity) or state ownership (D_STATE). In contrast, Clusters 1, 2 and 3 are positioned along Dim.2, which is significantly shaped by Kintensity and D_STATE, suggesting these clusters feature enterprises with varied structural attributes but not necessarily high profitability.
+
+The separation between the clusters along these dimensions suggests that high profitability (Cluster 1) does not correlate with high state ownership or capital intensity, hinting at a potential negative relationship between D_STATE and PRO. This spatial distribution and the characteristics of each cluster provide insights into the interplay between profitability, capital intensity, and state ownership within the dataset.
+
+```{r cluster-plotC, echo = FALSE, fig.width=8, fig.height=3, fig.pos = 'h', fig.cap = 'Cluster Result C', warning=FALSE}
+
+grid.arrange(grobs = screes[2], ncol = 1)
+
+```
+
+Figure \@ref(fig:cluster-plotC) displays clustering for "manufacturing" using a two-dimensional PCA projection, which highlights significant variations across Dim.1 and Dim.2, categorizing five distinct clusters differentiated by colors: red (Cluster 1), yellow (Cluster 2), green (Cluster 3), blue (Cluster 4), and purple (Cluster 5). Each cluster is visually separated by convex hulls.
+
+Dim.1, accounting for 27.1% of the variance, is mainly influenced by profitability (PRO) and degree of state ownership (D_STATE), indicating that profitability variations are a key differentiator among clusters. Cluster 3, with a wide spread along Dim.1, shows a diverse range of profitability, suggesting that high profitability can occur across different structural settings.
+
+Dim.2 explains 26.2% of the variance, largely driven by capital intensity (Kintensity) and market concentration (HHI). This dimension suggests that operational structure and market dynamics are more defining features for Clusters 1,2,4 and 5, impacting their placement on the plot more than direct financial outcomes.
+
+Overall, the clustering reveals distinct groupings based on profitability, state ownership, capital intensity, and market concentration. Notably, Cluster 1's high profitability contrasts with other clusters, which display higher levels of state ownership and capital intensity, possibly indicating an inverse relationship between these factors and profitability.
+
+```{r cluster-plotD, echo = FALSE, fig.width=8, fig.height=3, fig.pos = 'h', fig.cap = 'Cluster Result D', warning=FALSE}
+
+grid.arrange(grobs = screes[3], ncol = 1)
+
+```
+
+The figure in Figure \@ref(fig:cluster-plotD) presents a scatter plot using a two-dimensional PCA projection of the “electricity, gas, and water supply” dataset, highlighting two clusters: Cluster 1 in red and Cluster 2 in cyan, with convex hulls marking the boundaries. Dim.1, explaining 28.6% of the variance, is primarily influenced by D_STATE (Degree of State Ownership) and Kintensity (Capital Intensity), indicating key differences in operational structures between the clusters. Cluster 2, in particular, shows a diverse range of these attributes. Dim.2, contributing 25.3% of the variance, is predominantly shaped by PRO (Profitability), with Cluster 1 showing uniformly low profitability, contrasting with the slightly varied but generally low profitability in Cluster 2. This analysis underscores that while structural factors like state ownership and capital intensity differentiate enterprises along Dim.1, financial performance, notably profitability, is the distinguishing factor along Dim.2. Both clusters generally exhibit low profitability, reflecting potential operational or market challenges within the industry of electricity, gas, and water supply which is highly state owned and inelastic demanded in China [@kornai1979resourceconstrained].
+
+In a word, the analyses for the mining, manufacturing, and electricity, gas, and water supply sectors demonstrate distinct relationships between profitability, structural attributes, and market dynamics. In mining, profitability varies significantly across clusters, suggesting high profits are possible regardless of capital intensity or state ownership. In contrast, manufacturing reveals profitability is affected by operational and market structures, with clusters displaying high state ownership and capital intensity generally seeing lower profits. For the electricity, gas, and water supply sector, despite structural diversity, all clusters predominantly exhibit low profitability, highlighting challenges related to high state ownership.
+
+However, The PCA-based cluster analysis has limitations, including potential data oversimplification, assumptions of linear relationships, and an inability to infer causation. Factors like outliers, static analysis, and limited variables could distort results and affect the findings' generalizability and accuracy. Acknowledging these limitations is essential for contextualizing conclusions and guiding future research.
+
+
+# Interpretations and Hypotheses {#sec:interpretations}
+The cluster analyses conducted on various industrial sectors in China using PCA reveal significant insights into profitability (PRO) and the degree of state ownership (D_STATE) dynamics.  Heatmaps initially depicted an inverse relationship between these factors, showing that the more economically vibrant eastern regions, which typically have lower state ownership, exhibit higher profitability.  This contrasted with the western regions where higher state ownership correlates with lower profitability, supporting the notion that less state-dominated regions tend to be more profitable.
+
+Further investigation using PCA cluster analysis highlighted a more intricate interplay among profitability, state ownership, and capital intensity (Kintensity).  For instance, in mining, the clustering underscored that high profitability could be achieved regardless of capital intensity or state ownership.  In manufacturing and electricity, gas, and water supply sectors, the analyses delineated how structural and market factors significantly influence profitability, with high state ownership often correlating with lower profits.
+
+The PCA results indicated that profitability's relationship with state ownership and capital intensity is not uniform across all sectors, suggesting a complex, possibly negative correlation between high state ownership and profitability.  These findings challenge some traditional views and confirm others, suggesting a nuanced relationship that varies by industry and requires further detailed analysis to understand fully.
+
+
+# Conclusions {#sec:conclusions}
+In conclusion, this study has shed light on the complex interactions between state ownership, profitability, and capital intensity within China's industrial sectors, revealing significant regional differences and a potential inverse relationship between state ownership and profitability. Our use of heatmaps and PCA-based cluster analysis has highlighted these dynamics, especially in the economically advanced eastern regions.
+
+However, the methodologies employed, while insightful, are subject to limitations such as potential data oversimplification and challenges in establishing causality. The static nature of our analysis may also fail to capture the evolving effects of economic policies or market changes.
+
+The findings suggest that high state ownership is not consistently associated with low profitability, indicating a need for further research into the efficiency of state-owned versus privately-owned enterprises and the impact of capital intensity on profitability.
+Future research could include applying regression analysis to explore causal relationships, conducting longitudinal studies to observe these dynamics over time, expanding variable ranges for a more thorough analysis, broadening the dataset for greater generalizability, and incorporating qualitative methods to enrich the quantitative data analysis.
+
+These steps aim to refine our findings and enhance our understanding of China's industrial landscape, providing valuable insights for policymakers, investors, and researchers and highlighting the importance of a comprehensive approach to evaluating enterprise performance.
+
+
+# (APPENDIX) Appendix {.unnumbered}
+# EDA Appendix {#app:eda}
+```{r eda pre, echo = FALSE, warning = FALSE}
+
+# data for EDA
+Industrial.eda.tib <- IndustrialData.tib %>%
+  distinct(ID, YEAR, .keep_all = TRUE) %>%
+  select(PRO, D_STATE, HHI, YEAR, Kintensity)
+
+```
+## Variables of Interest {#app:variables-of-interest}
+### PRO
+Imputed profit (PRO) represents the profit levels of enterprises. It's a critical indicator of financial performance, reflecting the efficiency and competitiveness of a company. Imputed profit is calculated by accounted profit subtracting various costs and taxes, such as total intermediate input, financial expenses, total wages payable, depreciation, and value-added tax payable, from the total industrial output.
+
+### HHI
+The Herfindahl-Hirschman Index (HHI) is a measure of market concentration and is calculated as the sum of the squared market shares of all firms within an industry. In this project, HHI is calculated trying to measure the impact of market competitiveness to PRO.
+
+### D_STATE
+The variable D_STATE represents the degree of state capital within a company, calculated as the proportion of state-owned capital to the total capital of the enterprise. This metric quantifies the extent of government ownership and its stake in the company's capital structure, which is the core of this project.
+
+### Kintensity
+Kintensity represents the capital intensity per employee within an enterprise. It is the natural logarithm of the total assets per employee, incremented by one. This measure is indicative of how much a company relies on physical or capital assets, such as machinery, buildings, or equipment, as opposed to human labor, to produce its goods or services. In the project, Kintensity is introduced as a supplement indicator of State Owned Enterprises.
+
+### YEAR
+YEAR is the indicator if time, which is essential for time series analysis.
+
+## Univariate Analyses {#app:univariate}
+### PRO
+```{r pro-dens, echo = FALSE, fig.cap = 'PRO dense plot', warning = FALSE}
+
+ggplot(Industrial.eda.tib, aes(x = PRO)) +
+  geom_density(fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = mean(Industrial.eda.tib$PRO, 
+                               na.rm = TRUE), 
+             linetype = "dashed", color = "black", size = 1) +
+  labs(x = "PRO", y = "Density", title = "Density Plot of PRO") +
+  theme_minimal() + 
+  xlim(-20, 50)
+
+```
+
+Figure \@ref(fig:pro-dens) shows a distribution with a sharp peak slightly to the right of zero, indicating that most enterprises have low profit levels, with a skew towards higher profitability. There's a long tail extending to the right, suggesting the presence of outliers with very high profit levels. The plot also shows a smaller tail to the left, representing enterprises with losses. 
+
+### HHI
+```{r hhi-dens, echo = FALSE, fig.cap = 'HHI dense plot', warning = FALSE}
+
+ggplot(Industrial.eda.tib, aes(x = HHI)) +
+  geom_density(fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = mean(Industrial.eda.tib$HHI, 
+                               na.rm = TRUE), 
+             linetype = "dashed", color = "black", size = 1) +
+  labs(x = "HHI", y = "Density", title = "Density Plot of HHI") +
+  theme_minimal() + 
+  xlim(-0.05, 0.2)
+
+```
+
+Figure \@ref(fig:hhi-dens) shows a distribution that is heavily skewed to the right, with a peak close to zero. This suggests that most industries within the dataset are competitive, with a high number of firms having low market shares. There's significant variance as indicated by the long tail stretching to the right, revealing the presence of industries with higher levels of concentration. 
+
+### D_STATE
+```{r state-dens, echo = FALSE, fig.cap = 'D_STATE dense plot', warning = FALSE}
+
+ggplot(Industrial.eda.tib, aes(x = D_STATE)) +
+  geom_density(fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = mean(Industrial.eda.tib$D_STATE, 
+                               na.rm = TRUE), 
+             linetype = "dashed", color = "black", size = 1) +
+  labs(x = "D_STATE", y = "Density", title = "Density Plot of D_STATE") +
+  theme_minimal()
+
+```
+
+Figure \@ref(fig:state-dens) shows a highly skewed distribution with a main peak near zero, indicating that a large number of enterprises have a low degree of state capital. There is a second peak around one, which suggests that there are fewer enterprises with a high degree of state ownership. 
+
+### Kintensity
+```{r kintensity-dens, echo = FALSE, fig.cap = 'Kintensity dense plot', warning = FALSE}
+
+ggplot(Industrial.eda.tib, aes(x = Kintensity)) +
+  geom_density(fill = "gray", alpha = 0.5) +
+  geom_vline(xintercept = mean(Industrial.eda.tib$Kintensity, 
+                               na.rm = TRUE), 
+             linetype = "dashed", color = "black", size = 1) +
+  labs(x = "Kintensity", y = "Density", title = "Density Plot of Kintensity") +
+  theme_minimal()
+
+```
+
+Figure \@ref(fig:kintensity-dens) shows a relatively symmetrical distribution centered around a median value, as indicated by the dashed line. This suggests a balanced spread of companies across different levels of capital intensity, with most firms concentrated around the median level of Kintensity.
+
+## Bivariate Analyses {#app:bivariate}
+### Relationship Between PRO and YEAR
+```{r pro-year, echo = FALSE, fig.cap = 'PRO to YEAR box plot', warning = FALSE}
+
+boxplot(PRO~YEAR, data = Industrial.eda.tib, ylim = c(0,50))
+
+```
+
+Figure \@ref(fig:pro-year) shows a rising trend in median enterprise profitability from 1998 to 2007, with consistently high-profit outliers each year indicating systemic high performers and possibly reflecting industry-specific successes or advantageous market conditions.
+
+### Relationship Between Kintensity and YEAR
+```{r kintensity-year, echo = FALSE, fig.cap = 'Kintensity to YEAR box plot', warning = FALSE}
+
+boxplot(Kintensity~YEAR, data = Industrial.eda.tib, fig.cap = 'Kintensity to YEAR box plot', ylim = c(2,9))
+
+```
+
+Figure \@ref(fig:kintensity-year) shows a rising trend in the median profit levels (PRO) of enterprises from 1998 to 2007, with consistent presence of high-profit outliers each year. This suggests a general increase in profitability, with specific enterprises achieving exceptional profits likely due to industry successes or favorable market conditions.
+
+### Relationship Between PRO and D_STATE
+```{r pro-state, echo = FALSE, message = FALSE, fig.cap = 'PRO to D_STATE scatter plot', warning = FALSE}
+
+Industrial.eda.tib %>% 
+  ggplot(aes(x = D_STATE, y = PRO)) +
+  geom_point() +
+  stat_smooth(method = "lm")
+
+```
+
+Figure \@ref(fig:pro-state) suggests a negligible linear relationship between the degree of state ownership (D_STATE) and the profit levels of enterprises (PRO), with a flat regression line indicating no significant trend. This is deviated from the initial hypothesis, maybe because of multicollinearity. More analysis is needed in the future research.
+
+## Multivariate Analyses {#app:multivariate}
+```{r corr-multivariate, echo = FALSE, fig.cap = 'Multivariate corrplot', warning = FALSE}
+
+corrplot(cor(Industrial.eda.tib %>% select(-YEAR)), order = "hclust")
+
+```
+
+Figure \@ref(fig:corr-multivariate) indicates a strong negative correlation between D_STATE and PRO, and a weaker positive correlation between Kintensity and PRO. It shows correlation between PRO and D_STATE, which supports the initial hypothesis.
+
+# References {.unnumbered}

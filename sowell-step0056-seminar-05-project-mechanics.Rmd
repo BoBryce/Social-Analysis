@@ -1,0 +1,148 @@
+---
+title: "Seminar 05"
+subtitle: "Project Mechanics"
+author: "Bryce"
+date: "`r Sys.Date()`"
+output: 
+  bookdown::pdf_document2:
+    toc: false
+    keep_tex: false
+    number_sections: true
+urlcolor: blue
+linkcolor: blue
+geometry: margin=1in
+bibliography: ./seminar-05.bib
+csl: ./chicago-author-date.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, 
+                       eval=TRUE, 
+                       warning=FALSE, 
+                       message=FALSE,
+                       fig.width = 12,
+                       fig.height = 6,
+                       fig.align = "center"
+                     ) ;
+
+library(lubridate) ;
+library(stringr) ;
+library(purrr) ;
+
+library(tidyverse) ;
+library(tibble) ; 
+library(readr) ;
+library(magrittr) ;
+
+library(ggalt) ;
+
+library(zoo) ;
+
+library(knitr) ;
+```
+
+
+# Learning Objectives
+
+  - Revisiting [Distance Metrics](#distance-metrics)
+  - Review [RMarkdown mechanics](#rmarkdown-mechanics)
+  - Review elements of [templates](#templates)
+    - Proposal
+    - Final Project Report
+  - [Git LFS](#git-lfs)
+
+# Distance Metrics {#distance-metrics}
+
+In Session 05 we illustrated a couple of distance metrics, Euclidean and Manhattan, and mentioned a few correlation based metrics.  There are actually quite a few of these distance metrics one can choose from.  @eskandar2023exploring provides a nice overview of a number of these distance metrics.  @vandevelden2018distancebased provides an overview of various distance metrics, in particular strategies used to handle mixed datasets that include both continuous and categorical data.
+
+## Revisiting Clustering
+
+```{r we-are-going-the-distance, echo=TRUE }
+
+set.seed( seed = 42 );
+
+artificial_cluster_01.tib <- tibble( x = rnorm(n=30, mean=3, sd=1.2),
+                                     y = rnorm(n=30, mean=7, sd=3),
+                                     ac = "cluster_01"
+                                   );
+
+artificial_cluster_02.tib <- tibble( x = rnorm(n=30, mean=6, sd=2),
+                                     y = rnorm(n=30, mean=2, sd=0.7),
+                                     ac = "cluster_02"
+                                   );
+
+artificial_cluster_03.tib <- tibble( x = rnorm(n=40, mean=9, sd=0.2),
+                                     y = rnorm(n=40, mean=9, sd=2),
+                                     ac = "cluster_03"
+                                   );
+
+artificial_datums.tib <- bind_rows( artificial_cluster_01.tib, 
+                                    artificial_cluster_02.tib,
+                                    artificial_cluster_03.tib
+                                  ) ;
+
+
+ac_clusters_three.kmeans <- artificial_datums.tib %>%
+  select( -ac ) %>%
+  kmeans( centers = 3 ) ;
+
+artificial_datums.tib %<>%
+  mutate( k03 = ac_clusters_three.kmeans$cluster ) ;
+
+ac_clusters.grob <- artificial_datums.tib %>%
+  ggplot( mapping = aes( x = x, y = y ) ) +
+    geom_point( mapping = aes( color = ac ) ) +
+    geom_encircle( mapping = aes( group = k03 ) ) + 
+    theme( legend.position = "bottom" ) ;
+
+
+```
+
+```{r go-figure, echo = FALSE, fig.width=6, fig.height=3, fig.pos = 'h', fig.cap = 'Random clusters generated for Seminar 05' }
+
+ac_clusters.grob 
+
+```
+
+## Distances
+
+```{r different-distances }
+
+d_e <- artificial_datums.tib %>% 
+         select( x, y ) %>% 
+         dist() ;
+
+d_m <- artificial_datums.tib %>% 
+         select( x, y ) %>% 
+         dist( method = "manhattan" ) ;
+
+## Others?
+# Chebyshev distance
+d_cheb <- artificial_datums.tib %>% 
+            select(x, y) %>% 
+            dist(method = "maximum")
+
+# The Minkowski distance, here taken as r = 3
+d_mink <- artificial_datums.tib %>% 
+            select(x, y) %>% 
+            dist(method = "minkowski", p = 3)
+
+```
+
+# RMarkdown Mechanics {#rmarkdown-mechanics}
+
+Most of this tutorial is to further illustrate the use of RMarkdown.  Posit, the makers of RStudio, provide "cheat sheets," more accurately called reference sheets, for a number of common R libraries and frameworks.  The [RMarkdown "cheat sheet"](https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf) is very useful for those new to RMarkdown.
+
+# Templates {#templates}
+
+The final project repositories provided for this project include two templates to get you started.  Each illustrates RMarkdown features you will want to use in your project.  If you want to experiment with some of these features (the best way to learn them!), you can make a copy and try out different parameters (for instance, changing the width of a figure).
+
+For this tutorial we will switch over to RStudio to explore those two templates a bit more before finishing up wit Git LFS.
+
+# Git LFS {#git-lfs}
+
+If you have files greater than 25 MB, you will need [Git LFS](https://git-lfs.com/).
+
+# References {#references}
+
+

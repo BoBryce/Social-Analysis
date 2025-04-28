@@ -1,0 +1,491 @@
+---
+title: "Seminar 04"
+subtitle: "Visualization and Exploratory Data Analysis"
+author: "Bryce Ai"
+date: "`r Sys.Date()`"
+output:  
+  bookdown::pdf_document2:
+    toc: false
+    keep_tex: false
+    number_sections: true
+urlcolor: blue
+linkcolor: blue
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, 
+                       eval=TRUE, 
+                       warning=FALSE, 
+                       message=FALSE,
+                       fig.width = 12,
+                       fig.height = 6,
+                       fig.align = "center"
+                     ) ;
+
+
+library(knitr) ;
+
+library(lubridate) ;
+library(stringr) ;
+library(purrr) ;
+
+library(tidyverse) ;
+library(tibble) ; 
+library(readr) ;
+library(magrittr) ;
+
+library(sf) ;
+
+library(tidycensus) ;
+
+library(tigris) ;
+options( tigris_use_cache = TRUE,
+         tigris_class = "sf"
+       ) ;
+
+library(rnaturalearth) ;
+
+library(zoo) ;
+```
+
+# Make a Copy of this File
+
+**You should start by making a *copy* of this file in the same directory as this one (ie, in your repository directory), and changing `lastname-` to your last name (surname), then doing your work in that file.**
+
+# Learning Objectives
+
+  - continue practicing visualization with grammar of graphics
+  - demonstrate pulling data from APIs
+  - demonstrate joining datasets 
+  - generate summary statistics from integrated (joined) data
+  - use visualizations of univariate indicators and bivariate relationships to explore and describe the data 
+
+# Building on Previous Seminar
+
+## Case Rates
+
+In the last seminar, we modified the NYTimes Covid-19 data to calculate case rates per day; below we read in the NYTimes Covid-19 data and calculate case rates and death rates. 
+
+```{r nytimes-data-in, eval=TRUE, echo=TRUE, warning=FALSE, message=FALSE}
+
+##
+## read_csv is a function from the reader package.  Note that this is using a
+## relative path, essentially looking in the current directory (.) for the 
+## file us-counties.csv
+##
+
+## Data is spread over multiple files, get the filenames for each
+nytimes_files <- list.files( path = ".", pattern = "us-counties-202.\\.csv" ) ;
+
+## use map to apply the read_csv function to each file
+nytimes_c19.lst <- 
+  nytimes_files %>% 
+    map( \(x) read_csv( file = x ) ) ;
+
+## One tibble to bind them all
+nytimes_c19.tib <- bind_rows( nytimes_c19.lst ) ;
+
+## Calculate case rate and death rate
+nytimes_c19.tib %<>% 
+  group_by( state, county ) %>%
+  ## group_by( fips ) %>% # but this doesn't keep state and county name
+  arrange( date ) %>%
+  mutate( case_rate = c( cases[1], diff(cases) ) ) %>%
+  mutate( deaths_rate = c( deaths[1], diff(deaths) ) ) %>%
+  ## since we are going to reuse this tibble a few times, ungroup it
+  ungroup() ;
+
+```
+
+## County Population, Area, and Calculating Density
+
+In Seminar 03 we mentioned the data would be more useful if normalized, ie, if we were looking at ratio of case rate to county population.  In the following chunk we will demonstrate how to use packages that pull data from public APIs to get data on per county population estimates, the area of counties, joining those into a single dataset, then calculating population density.
+
+### Getting Spatial and Population Data from the US Census
+
+The first step in our EDA mapping exercise is to get the baseline geometries for US counties.  Convenenienty for calculating population density, this data also includes the area of each county in square meters.
+
+```{r us-counties}
+
+## We used this in the lecture slides, but the tidycensus package is built
+## on top of the tigris data, so we can nicely ask in the parameters to
+## include the geometry and geo variables (such as land area, ALAND) we are
+## after
+# us_counties.sf <- tigris::counties() %>%
+#   mutate( county_fips = paste0( STATEFP, COUNTYFP ) ) ;
+
+## use tidycensus's get_estimates function to pull the county population data
+us_counties.sf <- get_estimates( geography = "county", 
+                                 product = "population", 
+                                 year = 2022, 
+                                 geometry = TRUE,
+                                 keep_geo_vars = TRUE,
+                                 output = "wide"
+                               ) %>%
+  ## create a variable called county_fips, which we will use as the key to 
+  ## join in our NYTimes data  
+  mutate( county_fips = paste0( STATEFP, COUNTYFP ) ) ;
+
+```
+
+
+# Exercises for this Seminar
+
+In this section we will do a few exercises to 
+
+  1. calculate population density
+  1. calculate the case rate percentage (`case_rate_percentage`)
+  1. calculate the mean, standard deviation, and variance for case rate percentage
+  1. clean up the data and use join to create a sf object with just the data we want for our visualization
+  1. create a map that shows the variance across counties as a heat map
+  
+## Calculating Population Density
+
+If you `View` the data you will see we have a two of the variables we are after, namely:
+
+  - `ALAND`: the land area of the county in *square meters*
+  - `POPESTIMATE`: the estimated population of the county for 2022
+  
+In the next chunk, you should use mutate to create two variables:
+
+  - `land_area` in *square kilometers* (how many square meters in a square kilometer?)
+  - `pop_density`, ie, the number of people per square kilometer
+  
+```{r us-county-pop-density}
+
+us_counties.sf %<>% 
+  mutate( land_area = ALAND / ( 1000 * 1000 ) ) %>%
+  mutate( pop_density = POPESTIMATE / land_area ) ;
+
+```
+
+
+## Calculating the Case Rate Percentage
+
+To calculate the case rate percentage, we need to join
+
+  - our NYTimes data with
+  - our population estimate data
+  
+To do this, you should:
+
+  1. Create a new tibble called `fips_to_pop.tib` by `select`ing just the `county_fips`,  `POPESTIMATE`, and `pop_density` variables from `us_counties.sf`
+  1. Use `left_join` to add the variables in `fips_to_pop.tib` to `nytimes_c19.tib` and assign the result to `nytimes_c19_percent.tib`
+  1. Use `mutate` to calculate the `case_rate_percent` as a ratio of `case_rate` to (divided by) `POPESTIMATE` 
+  
+  
+```{r us-case-rate-percentage}
+
+fips_to_pop.tib <- us_counties.sf %>%
+  st_drop_geometry() %>%
+  select( county_fips, POPESTIMATE, pop_density ) ;
+
+nytimes_c19_percent.tib <- nytimes_c19.tib %>%
+  left_join( y = fips_to_pop.tib, by = c( "fips" = "county_fips" ) ) %>%
+  mutate( case_rate_percent = ( case_rate / POPESTIMATE ) * 100 ) %>%
+  mutate( cases_percent = ( cases / POPESTIMATE ) * 100 ) ;
+
+```
+
+You should inspect your new tibble to confirm the calculation works as expected.  Manually check the calculation.  Are there any instances where the case rate percentage looks too high?  How would you check for that?  What about the cases percentage?  There is at least one county where the cases percentage is well over 100.  What does this tell you?
+
+```{r us-case-rate-percentage-inspection}
+high_case_rate_percent <- nytimes_c19_percent.tib %>%
+  filter(case_rate_percent > 1) %>%
+  arrange(desc(case_rate_percent))
+
+cases_over_100_percent <- nytimes_c19_percent.tib %>%
+  filter(cases_percent > 100) %>%
+  arrange(desc(cases_percent))
+
+print(head(high_case_rate_percent))
+print(head(cases_over_100_percent))
+# View( nytimes_c19_percent.tib %>% filter( case_rate_percent > 1 ) )
+# View( nytimes_c19_percent.tib %>% filter( case_rate_percent > 1 ) %>% arrange( desc( case_rate_percent ) ) )
+# View( nytimes_c19_percent.tib %>% filter( cases_percent > 100 ) %>% arrange( desc(cases_percent) ) )
+
+```
+
+## Calculating Averages and Variances of Case Rate Percentages
+
+One way to explore case rate dynamics is to examine the trends in the variance in cases rates.  To do this, we will calculate the average, standard deviance, and variance in the case rates over approximately the last year the NYTimes Covid data.  To do this we will create a tibble named `nytimes_c19_percent_indicators.tib` from our `nytimes_c19_percent.tib` dataset.  In the chunk below, you should:
+
+  - `filter` the `nytimes_c19_percent.tib` dataset to only include observations after (greater than) 1 March 2022
+  - `group` the data by `fips`
+  - use `summarize` to calculate 
+    - `crp_mean`, the average (`mean`) of `case_rate_percent`;
+    - `crp_sd`, the standard deviation (`sd`) of `case_rate_percent`; and 
+    - `cpr_var`, the variance (`var`) of `case_rate_percent` 
+  - `arrange` the data in descending order  
+
+```{r us-county-case-rate-indicators}
+
+start_date <- as_date( "2022-03-01" );
+
+nytimes_c19_percent_indicators.tib <- nytimes_c19_percent.tib %>%
+  filter( date >= start_date ) %>%
+  group_by( fips ) %>%
+  summarize( crp_mean = mean( case_rate_percent, na.rm = TRUE ),
+             crp_sd   = sd( case_rate_percent, na.rm = TRUE),
+             crp_var  = var( case_rate_percent, na.rm = TRUE )
+           ) %>%
+  ungroup() %>%
+  left_join( y = us_counties.sf %>% 
+                 st_drop_geometry() %>%
+                 select( county_fips, NAME.y ), 
+             by = c( "fips" = "county_fips") 
+           ) %>%
+  arrange( desc( crp_var ) ) ;
+
+```
+
+Now we that we have calculated our indicators, let's do a little exploration of the range of variances.  If we do a quick inspection with `View` we see that there are quite a few obvious outliers with `crp_var > 0.1`.  To explore this data to find the range of values in the body of the dataset that do not seem to be skewed by what we are attributing to bad reporting, you can use `summary` to examine the range of values in the `crp_var`.  
+
+```{r crp-var-summary-boxplot}
+
+( crp_var.summ <- summary( nytimes_c19_percent_indicators.tib$crp_var ) );
+
+crp_var_boxplot.grob <- nytimes_c19_percent_indicators.tib %>%
+  ggplot( mapping = aes( x = crp_var ) ) +
+  geom_boxplot() +
+  labs( title = "Boxplot of Case Rate Percent of Population",
+        x = "case rate percent",
+        y = "",
+        caption = "Data from NYTimes"
+      )
+
+crp_var_boxplot_0.1.grob <- crp_var_boxplot.grob + coord_cartesian( xlim = c(0, 0.1) ) 
+crp_var_boxplot_0.01.grob <- crp_var_boxplot.grob + coord_cartesian( xlim = c(0, 0.01) ) 
+
+```
+
+Let's look at a histogram and density plot of the variance.
+
+```{r crp-var-summary-density}
+    
+
+crp_var_hist.grob <- nytimes_c19_percent_indicators.tib %>%
+  ggplot( mapping = aes( x = crp_var ) ) +
+  geom_histogram( binwidth = 0.005/20 ) +
+  labs( title = "Density of Case Rate Percent of Population",
+        x = "case rate percent",
+        y = "",
+        caption = "Data from NYTimes"
+      ) 
+
+crp_var_hist_x100.grob <- crp_var_hist.grob + coord_cartesian( xlim = c(0, 0.005) ) ;
+
+## Graph the density, notice the difference in the coordinates shown, the density
+## doesn't really show us that much
+crp_var_density.grob <- nytimes_c19_percent_indicators.tib %>%
+  ggplot( mapping = aes( x = crp_var ) ) +
+  geom_density() +
+  labs( title = "Density of Case Rate Percent of Population",
+        x = "case rate percent",
+        y = "",
+        caption = "Data from NYTimes"
+      ) +
+  coord_cartesian( xlim = c( 0, 0.1) ) ;
+
+
+```
+
+
+## Joining Our Data
+
+Now that we have explored the range and distribution of the variances in case rate percentage, we want to join with the geometry data so we can do some mapping.  We don't necessarily want the extra data in the census data, just `county_fips` to use as a keya.  Notice we don't have to specify `geometry`---that is intrinsic to `sf tibbles` and is not removed with `select`.
+
+```{r joining-census-geometry-back-in}
+
+us_crp.sf <- us_counties.sf %>%
+  left_join( y = nytimes_c19_percent_indicators.tib %>% 
+                   select( fips, crp_mean, crp_sd, crp_var ),
+             by = c( "county_fips" = "fips" )
+           ) %>%
+  rename( county_state_name = "NAME.y") ;
+
+```
+
+
+## Mapping Variance by County
+
+Now we can build our map, layer by layer, much like we built our map in the lecture slides.  We will 
+
+  1. grab the shape data for countries in North America, 
+  1. grab the shape data for continental US state boundaries,
+  1. crop that group to exclude Alaska and Hawaii (sorry), and 
+  1. then plot these to create nice context for our visualization of case rate percent variances.
+  
+```{r crpv-map}
+
+## Crop our data to only include continental
+us_crp_continental.sf <- us_crp.sf %>%
+  st_crop( xmin = -125, xmax = -65,
+           ymin = 20, ymax = 50 
+         );
+  
+## Get all the US states boundaries
+us.sf <- tigris::states( cb = TRUE, class = "sf" ) %>% 
+  select( STATEFP, STUSPS, NAME ) ;
+
+## Grab the North American countries
+na_countries.sf <- 
+  rnaturalearth::ne_countries( continent = "North America",
+                               returnclass = "sf" );
+
+## First pass
+us_crp_var_continental.grob <- us_crp_continental.sf %>%
+  ggplot() + 
+    geom_sf( data = na_countries.sf ) + 
+    geom_sf( mapping = aes( fill = crp_var ) ) +
+    scale_fill_gradient( low = "white", high = "red" ) +
+    coord_sf( xlim = c(-125, -65), ylim = c(22.5, 50) ) + 
+    ## geom_sf( data = us.sf ) + 
+    labs( fill = "Case Rate Percent Variance" ) + 
+    theme( panel.background = element_rect( fill = "aliceblue" ),
+           legend.position = "bottom" 
+         ) ;
+
+## Use our exploratory analysis to narrow the range
+## Set a cutoff limit
+
+crp_var_upper <- 0.1 ;
+
+us_crp_continental.sf %<>% 
+  mutate( crp_var_plot = ifelse( crp_var >= crp_var_upper, NA, crp_var ) ) ;
+
+## First pass
+us_crp_var_continental.grob <- us_crp_continental.sf %>%
+  ggplot() + 
+    geom_sf( data = na_countries.sf ) + 
+    geom_sf( mapping = aes( fill = crp_var_plot ), linewidth=0 ) +
+    scale_fill_gradient( low = "white", high = "red", 
+                         na.value = "lightgrey" 
+                       ) +
+    coord_sf( xlim = c(-125, -65), ylim = c(22.5, 50) ) + 
+    ## geom_sf( data = us.sf ) + 
+    labs( fill = "Case Rate Percent Variance" ) + 
+    theme( panel.background = element_rect( fill = "aliceblue" ),
+           legend.position = "bottom" 
+         ) ;
+
+ggsave( filename = "./us_crp_var.pdf", plot = us_crp_var_continental.grob,
+        width = 16,
+        device = "pdf" );
+
+```
+
+Notice above we "parameterized" the plot, ie we created a variable (`car_var_upper`) we could change to alter how the range of values are selected for our color scale.
+
+What if we want to get *really* fancy?  Maybe make this a function?
+
+```{r crpv-map-function}
+
+us_crp_map <- function( data.sf, crp_var_upper = 0.004, 
+                        scale_fill_low = "white", scale_fill_high = "red",
+                        scale_fill_na = "lightgrey", 
+                        ocean_color = "aliceblue", 
+                        map_filename = "us_crp_map.pdf"
+                      )
+{
+
+  ## Crop our data to only include continental
+  us_crp_continental.sf <- data.sf %>%
+    st_crop( xmin = -125, xmax = -65,
+             ymin = 20, ymax = 50 
+           );
+  
+  ## Get all the US states boundaries
+  us.sf <- tigris::states( cb = TRUE, class = "sf" ) %>% 
+    select( STATEFP, STUSPS, NAME ) %>%
+    st_crop( xmin = -125, xmax = -65,
+             ymin = 20, ymax = 50 
+           );
+
+  
+  ## Grab the North American countries
+  na_countries.sf <- 
+    rnaturalearth::ne_countries( continent = "North America",
+                                 returnclass = "sf" );
+  
+  ## crp_var_upper <- 0.1 ;
+  
+  us_crp_continental.sf %<>% 
+    mutate( crp_var_plot = ifelse( crp_var >= crp_var_upper, NA, crp_var ) ) ;
+  
+  us_crp_var_continental.grob <- us_crp_continental.sf %>%
+    ggplot() + 
+    geom_sf( data = na_countries.sf ) + 
+    geom_sf( mapping = aes( fill = crp_var_plot ), linewidth=0 ) +
+    scale_fill_gradient( low = scale_fill_low, high = scale_fill_high, 
+                         na.value = scale_fill_na 
+    ) +
+    geom_sf( data = us.sf, color="white", linewidth=0.1, fill=NA ) + 
+    coord_sf( xlim = c(-125, -65), ylim = c(22.5, 50) ) + 
+    labs( fill = "Case Rate Percent Variance" ) + 
+    theme( panel.background = element_rect( fill = ocean_color ),
+           legend.position = "bottom" 
+    ) ;
+  
+  ggsave( filename = map_filename, plot = us_crp_var_continental.grob,
+          width = 8,
+          device = "pdf" );
+  
+  return( us_crp_var_continental.grob ) ;
+  
+}
+
+```
+
+Now we can create a number of variations.
+
+```{r crp-map-variations}
+
+crp_exp_0_1.grob <- us_crp.sf %>% 
+  us_crp_map( crp_var_upper = 0.1,
+              map_filename = "crp_exp_0_1.pdf"
+            ) ;
+
+crp_exp_0_05.grob <- us_crp.sf %>% 
+  us_crp_map( crp_var_upper = 0.05,
+              map_filename = "crp_exp_0_05.pdf"
+            ) ;
+
+crp_exp_0_004.grob <- us_crp.sf %>% 
+  us_crp_map( crp_var_upper = 0.004, # default in our function
+              map_filename = "crp_exp_0_004.pdf"
+            ) ;
+
+crp_exp_0_004_br.grob <- us_crp.sf %>% 
+  us_crp_map( crp_var_upper = 0.004, # default in our function
+              scale_fill_low = "blue",
+              map_filename = "crp_exp_0_004_br.pdf"
+            ) ;
+
+crp_exp_0_004_silly.grob <- us_crp.sf %>% 
+  us_crp_map( crp_var_upper = 0.004, # default in our function
+              map_filename = "crp_exp_0_004_silly.pdf",
+              ocean_color = "lightgreen"
+            ) ;
+
+```
+
+# Commit and Push at End of Seminar
+
+Congratulations, you have completed the *Seminar 0X Learning Exercises*.  
+
+To practice submitting repositories, at the end of the seminar please do the following:  
+
+  1. make sure you have updated the `author` fields in the header at the beginning of the document 
+  1. save the file
+  1. knit the document
+  1. commit with the message  
+  
+    Seminar 0X
+  
+    Submitting at end of Seminar 0X to @jsowell78
+
+  5. push to GitHub 
+
+You can continue to tinker with the code here and do subsequent commits and pushes after the seminar, but Jesse would like you to do the commit above to see how far you progressed during the seminar.  This will be our standing operating procedure for seminars for the rest of the term.
