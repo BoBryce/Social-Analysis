@@ -1,0 +1,1332 @@
+---
+title: "STEP0056 Problem Set 02"
+author: "Candidate number"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+
+library(lubridate) ;
+library(stringr) ;
+library(tidyverse) ;
+library(cluster) ;
+library(RColorBrewer) ;
+library(ggalt) ;
+library(magrittr) ;
+library(tibble) ;
+library(grid) ;
+library(gridExtra) ;
+library(ggrepel) ;
+
+library(FactoMineR) ;
+library(factoextra) ;
+
+library(ISLR) ;
+
+## This sets the default ggplot theme to minimal and selects a 
+## serifed font similar to the body text
+theme_set(theme_minimal(base_family="Times", base_size=10)) ;
+
+## Initial Points
+grade <- 20 ;
+
+```
+
+
+
+# Problem Set Instructions
+
+## Submission
+
+This problem set is due 22 March 2024 at 1600, submission instructions below.
+
+As per the syllabus, there are two steps to submit your problem set:
+
+1. When you have completed the problem set, make sure you have put your student identifier in the author field, generate a PDF of your completed problem set, then commit and push to your problem set repository with the message:
+    
+    ```
+    Problem Set 02
+
+    @jsowell78 I am submitting problem set 02.
+    ```
+    
+1. Submit the completed PDF of the problem set via [Turnitin](https://moodle.ucl.ac.uk/mod/turnitintooltwo/view.php?id=5961526).
+
+**If you do not perform both of these steps you will not receive credit for this assessment.**
+
+## Marking and Points
+
+Below the header of each exercise you will see **[-/X]**.  **X** is the total points for that exercise.  When your exercise is marked, the **-** will be replaced with the marks you received for that exercise.  
+
+Some of the exercises only ask for you to fill in the appropriate code chunk.  In others, the code chunk is followed by a series of questions or a prompt to provide an interpretation of the results of the analysis in the code chunk.  **Please be sure to both fill in the code chunks with your exercise solutions and be sure to address questions and prompts for interpretation.**
+
+# Learning Objectives
+
+One of the key objectives of this exercise is to practice our cluster analysis workflow:
+
+  1. Identify and `select` significant variables for the feature set
+  1. Clean the data; in particular, ensure that any categorical variables have been transformed into factors
+  1. Perform our heuristics, elbow and silhouette, to identify the "optimal" number of clusters.  Remember, these `k` values are *starting points*, not absolute optimal values.
+  1. Identify the `k` value, or in the case of the exercises below, `k` value**s** that may provide insight into the dynamics of your dataset
+  1. Cluster and component analyses:
+      1. Create the clusters using your chosen cluster algorithm(s) and integrate these into your dataset
+      1. Apply the appropriate component analyses: PCA for quantitative data, Correspondence Analysis (CA) for exclusively qualitative, Factor Analysis of Multivariate Data for mixed clusters.
+  1. Plot your clusters and interpret the results, using supplementary data to help validate your results (such as the party affiliation data in our Congress datasets or the categorical values for elite and private schools in our college ranking dataset)
+
+
+
+# Grid Arrange Tutorial 
+
+In these exercises you will also get a basic understanding of how to use the `grid.arrange` function to layout multiple plots in one figure.  To illustrate, see the example below.  You should run the whole chunk to see the final outcomes.  Then you should work through the examples carefully, step-by-step, to make sure you understand how `grid.arrange` works.
+
+```{r grid-arrange-example, echo=TRUE}
+
+## Create a toy tibble for us to plot
+simple.tib = tibble( x = 1:10, y = 1:10 ) ;
+
+## Let's create a simple plot
+lin.grob <- simple.tib %>%
+  ggplot( mapping = aes( x=x, y=y ) ) + 
+  geom_line() + 
+  labs( title = "Simple Linear" ) ;
+
+## Let's create another one, this time squaring y
+sqr.grob <- simple.tib %>%
+  ggplot( mapping = aes( x=x, y=y^2) ) + 
+  geom_line() +
+  labs( title = "Simple Squares" );
+
+## Grid arrange example 1, we explicitly list the plots and like our 
+## faceting examples, we tell it the number of columns and it lays it out
+## for us, in *2* columns, side by side.
+grid.arrange( lin.grob, sqr.grob, ncol = 2, top = "Example 1" ) ;
+
+## Grid arrange example 2, maybe we want them one on top of the other.  So we
+## specify just one column.
+grid.arrange( lin.grob, sqr.grob, ncol = 1, top = "Example 2" ) ;
+
+## Grid arrange example 3, here we want to make our layout very explicit.
+## First we create a list of grobs.  I've added two fillers.
+## Here, lin.grob is plot #1, Filler 1 is plot #2, Filler 2 is plot #3,
+## and sqr.grob is plot #4.  Ie, in the layout below, we identify the plots 
+## by their index in the list.  We give the objects in our list names to 
+## easily access them and replace them if we like.
+myPlots <- list( linear = lin.grob, 
+                 f1 = textGrob( "Filler 1" ), 
+                 f2 = textGrob( "Filler 2"), 
+                 square = sqr.grob 
+               ) ;
+
+## We are specifying that each row of the resulting figure is going to be 3 
+## equal units wide
+widths = c( 1,1,1 ) ;
+
+## Layout indicates order of the plots.  As above, the plots are identified 
+## by their index in the list.  Their *position* and *width* is indicated by
+## the slots they fill. 
+## For instance, note plot 4 is in the first and second 
+## slot of the layout matrix, meaning it spans those two
+## slots
+myLayout <- rbind( c(4,4,2),
+                   c(3,1,1)
+                 ) ;
+
+## And finally the actual figure
+grid.arrange( grobs = myPlots,
+              widths = widths,
+              layout_matrix = myLayout,
+              top = "Example 3"
+            ) ;
+
+## Let's change the configuration a bit, starting with the widths
+widths = c(1,1,1,1) ;
+
+## Let's replace one of the plots, in particular, the item 
+myPlots$f1 <- textGrob( "Tall Filler" );
+
+## Let's change the layout a bit, notice I wasted some space with a couple of 
+## NA's, which are interpreted as "leave this space blank"
+myOtherLayout <- rbind( c(4,4,4,2),
+                        c(4,4,4,2),
+                        c(3,1,1,2),
+                        c(NA, 1, 1, NA)
+                 ) ;
+
+## Let's plot this bad boy again
+grid.arrange( grobs = myPlots,
+              widths = widths,
+              layout_matrix = myOtherLayout,
+              top = "Example 4"
+            ) ;
+
+
+```
+
+
+
+# K-means Clustering
+
+The exercises in this section are worth a total of 10/20 points for this assessment.  
+
+In the following we will practice generating k-means clusters.  First, we will use a randomly generated set of points similar to the initial example in the lecture.  Then we will use our familiar `mpg` dataset to illustrate `n`-dimensional clustering.  
+
+## Simple Two Dimensional Cluster
+
+In the following, we generate a simple dataset with a few more points than we had in our initial dataset, plot it to illustrate the known clusters (i.e. the ones we generate from the normal distribution), then apply k-means to see how well it performs on our sample.
+
+### Generate Our Dataset `r2.tib`
+
+
+```{r two-dimensional-dataset}
+
+## This makes sure the randomly generated values are the same---yes, I know, oxymoron
+set.seed(2324)
+
+## Number of observations per cluster
+num_per_cluster = 25 ;
+
+## cluster 1
+r2_c1.tib <- tibble( x = rnorm( n=num_per_cluster, mean=-1.25, sd=0.75 ), 
+                     y = rnorm( n=num_per_cluster, mean=0.5, sd=0.25 ),
+                     gen_clust = "1"
+                   ) %>%
+             arrange( x ) %>%
+             mutate( y_inc = -seq( from=0, to=1.25, by=1.25/(num_per_cluster-1) ),
+                     y = y + y_inc ) %>%
+             select( -y_inc ) ;
+
+## cluster 2
+r2_c2.tib <- tibble( x = rnorm( n=num_per_cluster, mean=1.5, sd=1 ), 
+                     y = rnorm( n=num_per_cluster, mean=2, sd=0.5 ),
+                     gen_clust = "2"
+                   ) ;
+
+## cluster 3
+r2_c3.tib <- tibble( x = rnorm( n=num_per_cluster, mean=-2.5, sd=1.25 ), 
+                     y = rnorm( n=num_per_cluster, mean=-3, sd=0.05 ),
+                     gen_clust = "3"
+                   ) %>%
+             arrange( x ) %>%
+             mutate( y_inc = -seq( from=0, to=1.25, by=1.25/(num_per_cluster-1) ),
+                     y = y + y_inc ) %>%
+             select( -y_inc ) ;
+
+## cluster 4
+r2_c4.tib <- tibble( x = rnorm( n=num_per_cluster, mean=3, sd=0.5 ), 
+                     y = rnorm( n=num_per_cluster, mean=-3, sd=0.5 ),
+                     gen_clust = "4"
+                   ) ;
+
+## create our toy dataset, notice what I did with the cluster levels factor
+r2.tib <- bind_rows( r2_c1.tib, r2_c2.tib, r2_c3.tib, r2_c4.tib ) %>%
+  mutate( gen_clust = factor( gen_clust, 
+                              levels = sort( unique( gen_clust ) ),
+                              labels = paste0( 'c', sort( unique( gen_clust ) ) ) 
+                            )
+        )
+
+```
+
+## Plot `r2.tib` and the "Generated" Clusters
+
+In this series of exercises you will plot the clusters and practice visualizations that help compare these clusters.
+
+### Plotting the Synthetic "Generated" Clusters
+
+**[-/1]**
+
+Plot `r2.tib` to take a quick look at the data, coloring the points based on which of our "synthetic" generated clusters they belong to.  Use `geom_encircle` to draw some nice polygons around the synthetic clusters.  To learn more, look up `?geom_encircle` and play with the examples, the more advanced examples are based on our friend the `mpg` dataset.  Recall there is an example of `geom_encircle` in the lecture slides.
+
+The plot should have the following characteristics:
+
+  - map `x` aesthetic to `x`, `y` to `y` as we normally do
+  - map the polygon `group` and `fill` aesthetics to the actual cluster group
+  - set the polygon `alpha` aesthetic to `0.2`  
+  - plot the points, mapping the `color` aesthetic to the actual cluster group
+  - plot nice polygons around your groups with `geom_encircle`, it's a good time
+  - add `theme_minimal()` to your ggplotting commands after you plot your points to create a "minimally decorated" plotting area
+  - set both axis ranges, the `x` and `y` axes of the plot, to `[-5,5]` and specify the breaks to be `-5:5` for each axis (*hint: you will need to use  `coord_cartesian`, `scale_x_continous`, and `scale_y_continuous` to do this correctly*)
+
+```{r two-dim-data-plot}
+
+##
+## two-dim-data-plot
+## Your code here
+## Plotting r2.tib with synthetic clusters highlighted
+# Create the plot with ggplot
+r2_plot <- ggplot(r2.tib, aes(x = x, y = y)) +
+  # Map the color aesthetic to the synthetic cluster group
+  geom_point(aes(color = gen_clust)) +
+  # Add polygons around the synthetic clusters
+  geom_encircle(aes(group = gen_clust, fill = gen_clust), 
+                alpha = 0.2, 
+                color = "black", 
+                size = 0.5, 
+                expand = 0.05) +
+  # Use minimal theme
+  theme_minimal() +
+  # Set axis ranges and breaks
+  coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+  scale_x_continuous(breaks = -5:5) +
+  scale_y_continuous(breaks = -5:5) +
+  # Set titles for better readability
+  labs(title = "Plot of r2.tib with Synthetic Clusters",
+       x = "X Axis",
+       y = "Y Axis",
+       color = "Cluster",
+       fill = "Cluster")
+
+## Display the plot
+print(r2_plot)
+
+```
+
+### Apply k-means
+
+**[-/1]**  
+
+Now apply k-means to the dataset for k values of 2, 3, 4, and 5, naming the variables `k2`, `k3`, `k4`, and `k5` respectively. 
+
+
+```{r k-means-clusters }
+
+##
+## k-means-clusters
+## Your code here
+
+# k-means with k = 2
+k2 <- kmeans(r2.tib %>% select(x, y), centers = 2, nstart = 25)
+
+# k-means with k = 3
+k3 <- kmeans(r2.tib %>% select(x, y), centers = 3, nstart = 25)
+
+# k-means with k = 4
+k4 <- kmeans(r2.tib %>% select(x, y), centers = 4, nstart = 25)
+
+# k-means with k = 5
+k5 <- kmeans(r2.tib %>% select(x, y), centers = 5, nstart = 25)
+
+
+
+
+
+```
+
+
+### Plot Clusters for k=4 {#plot-k4}
+
+**[-/1]**
+
+Now that you have a few nice clusters, we would like to visually inspect how well k=4 matches our original groups.  To plot these:
+
+  - plot *unfilled* polygons for the generated clusters using a black dotted line; *hint, this is one of the constant value aesthetics that caused some problems in the last set of exercises*
+  - plot polygons for the `k4` clusters, colored and filled based on the `k4` cluster and with an `alpha value of `0.2`
+  - plot the points colored by which `k4` cluster they are assigned to
+  - use the same theme, `coord_cartesian` dimensions, and `breaks` as in the last graph
+  
+```{r vis-k4 }
+
+##
+## vis-k4
+## Your code here
+
+## Add the k-means cluster assignments to the r2.tib dataset
+r2.tib <- r2.tib %>%
+  mutate(cluster_k4 = factor(k4$cluster))
+
+## Plot the points and polygons for the generated and k4 clusters
+# First, create a ggplot object with the points colored by the k4 cluster
+k4_plot <- ggplot(r2.tib, aes(x = x, y = y, color = cluster_k4)) +
+  geom_point() +
+  # Add unfilled polygons for the generated clusters using black dotted lines
+  geom_encircle(aes(group = gen_clust), linetype = "dotted", color = "black", size = 0.5) +
+  # Add filled polygons for the k4 clusters with alpha value set to 0.2
+  geom_encircle(aes(fill = cluster_k4), alpha = 0.2, color = "black", size = 0.5) +
+  # Apply the minimal theme for a clean look
+  theme_minimal() +
+  # Set consistent axis ranges and breaks using coord_cartesian, scale_x_continuous, and scale_y_continuous
+  coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+  scale_x_continuous(breaks = -5:5) +
+  scale_y_continuous(breaks = -5:5) +
+  # Add labels and titles for clarity
+  labs(title = "Comparison of Generated and k-means Clusters for k=4",
+       x = "X Axis",
+       y = "Y Axis",
+       color = "k4 Cluster",
+       fill = "k4 Cluster")
+
+## Output the plot for visual inspection
+print(k4_plot)
+
+```
+
+**Based on your visualization, are any of the points misclassified?  If so, how many and what are the approximate coordinates?**
+
+2 points, (0.6,-4.3) & (-0.7,1.6)
+
+
+### Optimization Heuristics 
+
+In the lecture, we learned two optimization heuristics: elbow and silhouette.  In the following, you may either adapt the code from the from the lecture graph the outcomes of these heuristics or use the shortcut functions from the `factoextra` package.
+
+#### Elbow
+
+**[-/0.5]**
+
+Below, create a visualization of the elbow method (like the one in the lecture slides) applied to our toy dataset `r2.tib`.  You can do this manually, or using the convenience functions we discussed in class.
+
+```{r k-means-r2-elbow }
+
+##
+## k-means-r2-elbow
+## Your code here
+# Compute total within-cluster sum of square
+fviz_nbclust(r2.tib %>% select(x, y), kmeans, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 2) + # Optional: Add a vertical line to mark the optimal number of clusters
+  labs(subtitle = "Elbow Method")
+```
+
+**What k-value does the elbow method recommend?**
+Based on the plot, the elbow of the curve is at k=4. This is where the line starts to flatten out, indicating that increasing the number of clusters beyond 4 does not yield a significant reduction in WSS. Therefore, the elbow method recommends using 4 clusters for the dataset.
+
+**Does the elbow method agree with the actual number of groups in the data set?  If not, is it still helpful?**
+Yes, the elbow method agrees with the actual number of groups in the dataset, which is 4. 
+
+#### Silhouette
+
+**[-/0.5]**
+
+Below, create a visualization of the silhouette method (like the one in our lecture slides) applied to our toy dataset `r2.tib`.
+
+```{r k-means-r2-silhouette}
+
+##
+## k-means-r2-silhouette
+## Your code here
+silhouette_plot <- fviz_nbclust(r2.tib %>% select(x, y), kmeans, method = "silhouette") +
+  labs(subtitle = "Silhouette Method")
+
+nb_clusters <- 2:10  # Assuming you're testing a range of 2 to 10 clusters
+sil_widths <- sapply(nb_clusters, function(k) {
+  km_res <- kmeans(r2.tib %>% select(x, y), centers = k, nstart = 25)
+  silhouette_score <- silhouette(km_res$cluster, dist(r2.tib %>% select(x, y)))
+  mean(silhouette_score[, 3])
+})
+optimal_k <- nb_clusters[which.max(sil_widths)]
+
+# Note: Adjust the `xintercept` based on your calculated optimal number of clusters
+silhouette_plot <- silhouette_plot + 
+  geom_vline(xintercept = optimal_k, linetype = 2, color = "red")
+
+# Print the updated plot
+print(silhouette_plot)
+
+
+```
+
+**What k-value does the silhouette method recommend?**
+ k = 5
+
+**Does the silhouette method agree with the actual number of groups in the data set?  If not, is it still helpful?**
+Yes, the silhouette method agrees with the actual number of groups in the dataset, which is 5.
+
+##### Plot Clusters for k=5
+
+**[-/1]**
+
+Re-using your code for the plot of k=4, plot the clusters for k=5 below.
+
+```{r vis-k5}
+
+##
+## vis-k5
+## Your code here
+## Reusing the k-means clustering with k=5 from the earlier step
+k5 <- kmeans(r2.tib %>% select(x, y), centers = 5, nstart = 25)
+
+## Add the k5 cluster assignments to the r2.tib dataset
+r2.tib <- r2.tib %>%
+  mutate(cluster_k5 = factor(k5$cluster))
+
+## Plotting the k=5 clusters
+# Reuse the base plot with ggplot and adjust for k=5 clusters
+k5_plot <- ggplot(r2.tib, aes(x = x, y = y)) +
+  # Plot the points colored by the k5 cluster assignments
+  geom_point(aes(color = cluster_k5)) +
+  # Add polygons for the k5 clusters with alpha value set to 0.2
+  geom_encircle(aes(group = cluster_k5, fill = cluster_k5), 
+                alpha = 0.2, color = "black", size = 0.5, expand = 0.05) +
+  # Use the minimal theme for a clean look
+  theme_minimal() +
+  # Set consistent axis ranges and breaks using coord_cartesian, scale_x_continuous, and scale_y_continuous
+  coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+  scale_x_continuous(breaks = -5:5) +
+  scale_y_continuous(breaks = -5:5) +
+  # Add labels and titles for clarity
+  labs(title = "K-means Clustering with k=5",
+       x = "X Axis",
+       y = "Y Axis",
+       color = "k5 Cluster",
+       fill = "k5 Cluster")
+
+## Display the plot for visual inspection
+print(k5_plot)
+
+
+
+```
+
+**What has changed, aside from the number of clusters?**
+This time,there is no point misclassified.
+
+
+**Based on what you know of the silhouette method, why does it prefer `k=5` over `k=4`?**
+The elbow method suggests the optimal number of clusters is at k=4, which is visible in the chart where the total within-cluster sum of squares (WSS) begins to decrease at a slower rate, forming an "elbow" in the plot. The silhouette method also identifies k=5 as a good candidate, as indicated by a peak in the silhouette width, suggesting a strong structure has been detected. Both methods provide valuable insights, but they may not always agree with the actual number of groups within the dataset. In the case where they disagree, it could be due to noise in the data, or the actual groups may not be as distinctly separated in the feature space as assumed. Nevertheless, these heuristics are still helpful as they provide a systematic way to approach the selection of k in clustering scenarios where the true number of clusters is unknown.
+
+**In this case, do you think the difference is substantive?  Explain.**
+
+The difference between the recommendations of the elbow and silhouette methods is not merely a numerical discrepancy but can also be substantive depending on the context. The elbow method suggests 4 clusters based on the point of inflection where the decrease in within-cluster sum of squares (WSS) tapers off, indicating diminishing returns in explanatory power with additional clusters. However, the silhouette method, which assesses the tightness and separation of clusters, recommends 5 clusters, implying that the fifth cluster, despite contributing less to the decrease in WSS, still significantly improves the coherence and separation of the clusters.
+
+This difference can be substantive if the additional cluster identified by the silhouette method captures a meaningful distinction in the underlying data that could be crucial for specific analyses or decisions. For instance, in market segmentation, even if the elbow method suggests fewer segments, a silhouette-recommended additional segment might represent a niche but potentially valuable customer base. Thus, whether the difference is substantive depends on whether the additional granularity provides actionable insights or improved performance for the task at hand.
+
+
+## `n`-dimensional with Principal Component Visualization (PCA)
+
+In this exercise we will apply PCA to the quantitative data in the Iris dataset (built into R).  In this exercise, we will once again walk through our cluster analysis workflow.
+
+### Create Iris Tibble
+
+**[-0.5]**
+
+Prepare the data.
+
+  1. Create a tibble from the `iris` dataset, making the `Species` variable a nominal categorical variable to be later used as a comparator to the identified clusters.
+  1. Create a vector of the salient variables to make selecting the appropriate variables easy and consistent in later steps.
+
+```{r iris-dataset}
+
+##
+## iris-dataset
+## Your code here
+# Create a tibble from the iris dataset, ensuring that Species is a factor
+iris_tibble <- as_tibble(iris) %>%
+  mutate(Species = as.factor(Species))
+
+#Create a vector of the quantitative variables in the dataset
+# Exclude the Species variable as it is categorical
+salient_variables <- names(iris_tibble)[1:4]
+
+
+```
+
+### "Optimization" Heuristics
+
+Apply the elbow and silhouette heuristics on the selected variables.  You may do this manually as we have in the lectures, or use the shortcut functions from the `FactoMineR` and `factoextra` libraries.
+
+#### Elbow  
+
+**[-/0.25]**
+
+```{r iris-elbow}
+
+##
+## iris-elbow
+## Your code here
+## Preparing the dataset from the iris tibble
+iris_quantitative <- select(iris_tibble, -Species)
+
+## Applying the Elbow method
+# The Elbow method visualizes the total within-cluster sum of squares (TWSS) against different k values
+fviz_nbclust(iris_quantitative, kmeans, method = "wss") + 
+  geom_vline(xintercept = 3, linetype = "dashed", color = "black") +
+  labs(title = "Elbow Method Analysis on Iris Dataset",
+       subtitle = "The dashed line represents a suggested optimal number of clusters",
+       x = "Number of Clusters", y = "Total Within Sum of Squares") +
+  theme_minimal()
+
+```
+
+**In this case, the elbow seems clear, but we should explore the next `k` value as well.  What are the two `k` values suggested by the elbow heuristic?**
+
+The elbow plot for the Iris dataset suggests k=3 as the optimal number of clusters due to a noticeable angle in the graph, but k=4 also presents a potential alternative as the next most significant elbow point. The silhouette analysis would be necessary to further validate the suitability of these k values for clustering.
+
+
+#### Silhouette 
+
+**[-/0.25]**  
+
+```{r iris-silhouette}
+
+##
+## iris-silhouette
+## Your code here
+## Applying the Silhouette method
+# The Silhouette method assesses the quality of the clustering by calculating the average silhouette width
+fviz_nbclust(iris_quantitative, kmeans, method = "silhouette") +
+  labs(title = "Silhouette Method Analysis on Iris Dataset",
+       subtitle = "Silhouette width for various numbers of clusters",
+       x = "Number of Clusters", y = "Average Silhouette Width") +
+  theme_minimal()
+
+
+```
+
+**The silhouette heuristic has a clearly suggested `k` value.  What is that value?**
+
+The silhouette plot indicates that the suggested k value is k=2, as it corresponds to the highest average silhouette width, indicating the best separation between the clusters.
+
+
+### Create the Cluster Objects
+
+**[-/0.5]**
+
+For the two values of `k` you have selected, use k-means to create the cluster objects and integrate the cluster values into `iris.tib`.  As in our lectures, name the variables by prefixing the value of `k` with "k"---for instance, a `k` value of `4` would have the variable name `k4`.  Also make sure that you remember to make the variables factors!
+
+```{r iris-clusters}
+
+##
+## iris-clusters
+## Your code here
+## Perform k-means clustering on the iris dataset for the selected k values
+
+# k-means with k = 3
+set.seed(123) # For reproducibility
+k3_clusters <- kmeans(iris_quantitative, centers = 3, nstart = 25)
+iris_tibble$k3 <- factor(k3_clusters$cluster)
+
+# k-means with k = 4
+set.seed(123) # For reproducibility
+k4_clusters <- kmeans(iris_quantitative, centers = 4, nstart = 25)
+iris_tibble$k4 <- factor(k4_clusters$cluster)
+
+```
+
+### PCA 
+
+In this exercise, we will look at the PCA data structure to
+  - understand the variables contributing to the components generated by PCA
+  - add the coordinates of the observations (referred to as individuals in the PCA data structure) to our dataset (tibble)
+  
+
+#### Perform the PCA 
+
+**[-/0.25]**
+
+In the chunk below, use the `PCA` function to perform the PCA, naming the resulting object `iris.pca`.  Remember to select on the the variables you want using the variables vector we created earlier and to set `graph=FALSE`.
+
+```{r iris-pca}
+
+##
+## iris-pca
+## Your code here
+iris_pca <- PCA(iris_tibble[, salient_variables], graph = FALSE)
+
+```
+
+#### Scree Plot
+
+**[-/0.25]**
+
+The scree plot shows how much each component explains the total variance, or information, in your data set.  First, we will look at the eigenvalues to see how much variance each component accounts for by looking at the `eig` object in our `iris.pca` object.
+
+```{r iris-eig}
+
+##
+## iris-eig
+## Your code here
+iris_eigenvalues <- iris_pca$eig
+print(iris_eigenvalues)
+
+
+```
+
+**[-/0.25]**  
+
+As discussed in class, the sum of the eigenvalues, which represent the amount of variance accounted for by a particular component, sum to the number of components.  In this case, `4`.  The percentages above are calculated by dividing the eigenvalue by the number of components.  Use the `fviz_eig` function (as illustrated in the slides and supplementary `.R` files in the `dsv_in_class_materials` repository) to generate the scree plot below.  
+
+```{r iris-scree}
+
+##
+## iris-scree
+## Your code here
+fviz_eig(iris_pca) +
+  labs(title = "Scree Plot of the Iris Dataset",
+       subtitle = "Eigenvalues and Percentage of Variance Explained",
+       x = "Principal Components", y = "Variance Explained") +
+  theme_minimal()
+
+
+```
+
+**Based on the eigenvalues table and the scree plot above, what percentage of the variance in the dataset is accounted for by the first and second components?**
+
+*your answer here*
+
+The first two principal components typically capture most of the variance in the Iris dataset, with the first component accounting for 75% and the second component about 22%.
+
+#### Variables' Contributions to the Components  
+
+**[-/0.25]**
+
+
+Use the functions we reviewed in lecture to display the contributions of individual variables to component 1 and component 2.  Use the `grid.arrange` function illustrated in the previous exercise to display these two plots in the same figure, i.e. the two plots side-by-side.
+
+```{r iris-variable-contributions}
+
+##
+## iris-variable-contributions
+## Your code here
+## Create plots of variables' contributions to components 1 and 2
+contrib_comp1 <- fviz_contrib(iris_pca, choice = "var", axes = 1, top = 4) +
+  labs(title = "Variable Contribution to PC1")
+
+contrib_comp2 <- fviz_contrib(iris_pca, choice = "var", axes = 2, top = 4) +
+  labs(title = "Variable Contribution to PC2")
+
+## Arrange the two plots side by side using grid.arrange
+grid.arrange(contrib_comp1, contrib_comp2, ncol = 2)
+
+
+```
+
+**Which of the variables contribute the most to Dim1?**
+Petal Length 
+
+
+**Which of the variables contribute the most to Dim2?**
+Sepal Width
+
+
+**What does this tell you about the correlations amongst these variables?**
+The strong contributions of Petal Length and Petal Width to the first principal component suggest that these variables are highly correlated with each other. Since PCA tends to capture the direction of maximum variance in the first component, and these variables are heavily weighted, it indicates that they vary together in a way that explains a significant proportion of the variance in the dataset.
+
+
+#### Plotting the Observations  
+
+
+Now that we know which variables contribute to the components we have identified, we can now plot our variables and clusters.
+
+##### Add the Coordinates to our Tibble  
+
+**[-/0.5]**
+
+Add the component 1 and component 2 coordinates for the observations to the `iris.tib`.  *Hint: the coordinates for `Dim.1` vector can be retrieved by `iris.pca$ind$coord[, 1]`, which retrieves the first column of the individual coordinates matrix in the PCA data structure.  This is also illustrated in lecture slides.* 
+
+```{r iris-add-coordinates}
+
+##
+## iris-add-coordinates
+## Your code here
+iris_tibble$Dim1 <- iris_pca$ind$coord[, 1]
+iris_tibble$Dim2 <- iris_pca$ind$coord[, 2]
+
+
+```
+
+##### Plot the Observations and Clusters  
+
+**[-/2]**
+
+Finally, we will plot the data in component dimensions 1 and 2, comparing the cluster boundaries and our existing categorical variables.  Use `grid.arrange` to plot two panels, following the following specifications:
+
+**Panel 1: Cluster and Category *Boundaries***
+
+In this panel, you will compare the two sets of clusters identified earlier with the groups identified by `Species`.  Here you are **only drawing the boundaries of the groups**.  For the first plot, use `geom_encircle` to:
+
+  - create a colors vector as illustrated in the lectures to assign colors to `k2`, `k3`, and `Species` (*hint: these are the `names` assigned to your color vector*)
+  - draw the polygons enclosing cluster `k2` using the color labelled "k2"
+  - draw the polygons enclosing cluster `k3` using the color labelled "k3"
+  - draw the polygons enclosing the groups identified by `Species` using the color labelled "Species"
+  - do not forget to set the color `values` in `scale_color_manual`
+
+**Panel 2: Clusters and Observations**
+
+Clearly one of our `k` values is a better aligned to our `Species` than the other.  Plot the observations and the `Species` polygons as follows:
+
+  - create a colors vector for the individuals clusters identified by your selected `k` *values*
+  - create a linetypes vector for the individual species 
+  - use `geom_encircle` to plot the `Species` boundaries as the first layer
+  - use `geom_encircle` to plot filled polygons for the clusters, set to a low alpha value
+  - plot the observations, colored by the associated cluster, set to a low alpha value that is slightly higer than the one you used for the cluster polygons
+  - do not forget to set up your guides (*hint: you will need one guide for the `fill` and `color` `values` for the clusters and a second for the `linetype` `values` for the species*)
+  
+Finally, use `grid.arrange` to draw the two panels side-by-side (i.e., two "columns").
+
+```{r iris-cluster-boundaries}
+
+##
+## iris-cluster-boundaries
+## Your code here
+
+# Perform k-means clustering for k=2 and k=3
+set.seed(123)  # Ensure reproducibility
+iris_clusters_k2 <- kmeans(iris_tibble[, salient_variables], centers = 2, nstart = 25)
+iris_clusters_k3 <- kmeans(iris_tibble[, salient_variables], centers = 3, nstart = 25)
+
+# Add the cluster assignments as factors
+iris_tibble$k2 <- factor(iris_clusters_k2$cluster)
+iris_tibble$k3 <- factor(iris_clusters_k3$cluster)
+
+# Add the PCA coordinates
+iris_tibble$PC1 <- iris_pca$ind$coord[, 1]
+iris_tibble$PC2 <- iris_pca$ind$coord[, 2]
+
+# Define a custom theme that can be reused for plots
+custom_theme <- theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Define color vectors for plotting
+colors <- c(k2 = "blue", k3 = "green", Species = "red")
+linetypes <- c(setosa = "solid", versicolor = "dashed", virginica = "dotdash")
+
+# Panel 1: Cluster and Category Boundaries
+panel1 <- ggplot(iris_tibble, aes(x = Dim1, y = Dim2)) +
+  geom_encircle(data = iris_tibble, aes(group = k2, color = "k2"), size = 1, expand = 0.05) +
+  geom_encircle(data = iris_tibble, aes(group = k3, color = "k3"), size = 1, expand = 0.05) +
+  geom_encircle(data = iris_tibble, aes(group = Species, color = "Species"), size = 1, expand = 0.05) +
+  scale_color_manual(values = colors) +
+  theme_minimal() +
+  labs(title = "Cluster and Category Boundaries")
+
+# Panel 2: Clusters and Observations
+panel2 <- ggplot(iris_tibble, aes(x = Dim1, y = Dim2)) +
+  geom_encircle(data = iris_tibble, aes(linetype = Species, group = Species), color = "black", size = 1, expand = 0.05) +
+  geom_encircle(data = iris_tibble, aes(fill = k3, group = k3), alpha = 0.2, size = 0.5, expand = 0.05, color = NA) +
+  geom_point(aes(color = k3), alpha = 0.5) +
+  scale_color_manual(values = colors["k3"]) +
+  scale_fill_manual(values = colors["k3"]) +
+  scale_linetype_manual(values = linetypes) +
+  theme_minimal() +
+  guides(
+    fill = guide_legend(override.aes = list(alpha = 0.2)),
+    color = guide_legend(title = "Cluster"),
+    linetype = guide_legend(title = "Species")
+  ) +
+  labs(title = "Clusters and Observations with Species Boundaries")
+
+# Arrange the two panels side-by-side
+grid.arrange(panel1, panel2, ncol = 2)
+```
+
+
+**Below, interpret your results as we have done in the lectures, including how you used these two different depictions of the clusters and `Species` to select the `k` value and what the implications of the intersections of the clusters and `Species` group.**
+
+Panel 1 reveals that clustering with k=3 matches the true Iris species divisions more closely than k=2, indicating that three clusters are appropriate for this dataset.
+
+Panel 2 shows some overlap between the species, especially where the Versicolor and Virginica groups are adjacent, but overall, the k=3 clustering corresponds well with the actual species, confirming that it captures the inherent structure of the dataset effectively.
+
+
+# Applying the Clustering Workfows
+
+In following two exercise, you will follow the cluster analysis workflow we have discussed in class and that is described at the beginning of this set of learning exercises.  For each step you will perform the associated analyses, then add your interpretations in italics below.  In the next exercise, you will apply hierarchical clustering to the college rankings dataset using Gower and the FAMD functions.  In the following exercise, you will compare the resulting clusters with the PAM clusters from class.  You can certainly use the workflows and visualizations in the previous exercises as templates, but the following purposely does not include the "lay-by-layer" instructions in the previous exercises.  The learning objective here is for you to internalize these steps yourselves and adapt them to your analysis (as you are doing in your final projects).
+
+This *also* means you have some opportunities for creativity, modifying the visualizations we have developed above.  If you *do* get creative, please add **(extra credit)** in bold in your interpretations.  You can garner a maximum of 0.5 points extra credit in each of the following (for a total of 1 additional point overall).
+
+**Data** 
+
+In thee following exercises, we will use an *expanded* subset of the `College` data we discussed in class.  I have created that dataset for you below.  This data comes from the `ISLR` package.  You can learn a bit more about the variables by loading the library (`library(ISLR)`) and invoking `?College` to get the dataset's help file.
+
+```{r colleges-tib}
+
+private.tib <-
+  tibble( private = factor( c( "Yes", "No" ),
+                               levels = c( "No", "Yes" )
+                             ),
+          is_private = factor( c( "Private", "Public" ),
+                              levels = c( "Public", "Private" )
+                            )
+        ) ;
+
+colleges.tib <-
+  as_tibble( rownames_to_column( College, var = "name" ) ) %>%
+  mutate( accept_rate = Accept/Apps,
+          isElite = cut( Top10perc,
+                         breaks = c(0, 50, 100),
+                         labels = c("Not Elite", "Elite" ),
+                         include.lowest = TRUE
+                       ),
+          enroll_rate = Enroll/Accept
+        ) %>%
+  mutate( isElite = factor(isElite) ) %>%
+  select( name, accept_rate, enroll_rate, Outstate, 
+          Grad.Rate, Private, isElite, F.Undergrad, PhD,
+          S.F.Ratio, Expend ) %>%
+  rename( outstate = Outstate, 
+          grad_rate = Grad.Rate,
+          private = Private,
+          is_elite = isElite,
+          fulltime_undergrad = F.Undergrad,
+          phd = PhD,
+          student_faculty_ratio = S.F.Ratio,
+          expend = Expend 
+        ) %>%
+  left_join ( private.tib ) %>%
+  select( -private ) ;
+
+## All the original variables except the first, name
+cluster_vars.vec <- names(colleges.tib)[-1] ;
+
+```
+
+## Hierarchical Clustering with Mixed Variables
+
+The exercises in this section are worth a total of 6/20 points for this assessment.
+
+#### Gower Distance  
+
+**[-/0.5]**
+
+Create the Gower distance obejct as shown in class, remember to double check the Metric.
+
+```{r colleges-gower }
+
+##
+## colleges-gower
+## Your code here
+colleges_gower <- daisy(colleges.tib[, cluster_vars.vec], metric = "gower")
+
+```
+
+
+### Perform Your Optimization Heuristics
+
+Below you will apply the Elbow and Silhouette "optimization" heuristics to select candidate `k` values.  This means you need to plot the graphs for each.  Remember you can use the shortcut functions illustrated in the slides.
+
+#### Elbow  
+
+**[-/0.33]**
+
+```{r colleges-hier-elbow }
+
+
+## colleges-hier-elbow
+## Your code here
+numeric_colleges <- colleges.tib %>%
+select(where(is.numeric)) # Adjust the column names accordingly
+
+
+fviz_nbclust(numeric_colleges, kmeans, method = "wss", k.max = 20) +
+  geom_vline(xintercept = 5, linetype = 2, color = "red") +
+  labs(title = "Elbow Method with K-Means Clustering",
+       subtitle = "The red line indicates k=5",
+       x = "Number of Clusters", y = "Total Within Sum of Squares") +
+  theme_minimal()
+```
+
+**Provide an interpretation of the elbow heuristic.**
+Based on the elbow plot, the elbow heuristic is used to determine an optimal number of clusters by identifying a point on the graph where the within-cluster sum of squares (WSS) starts to decrease at a slower rate. The "elbow" is typically where there is a noticeable change from a steep slope to a more gradual one. In plot, it shows the elbow could be around k=2 or k=3, where the rate of decrease in WSS changes. The optimal k is often chosen at this point because it represents a balance between maximizing the number of distinct clusters and minimizing within-cluster variance. 
+
+#### Silhouette  
+
+**[-/0.33]**
+
+```{r colleges-hier-sil}
+
+##
+## colleges-hier-sil
+## Your code here
+
+fviz_nbclust( scale( numeric_colleges ),
+FUN = kmeans, method = "silhouette"
+) +
+labs( title = "Colleges Silhouette" )
+
+
+```
+
+**Provide an interpretation of the elbow heuristic.**
+The silhouette analysis suggests that the optimal number of clusters for the dataset is two, as indicated by the peak average silhouette width at k=2. Beyond this point, the silhouette width decreases, signaling a decline in clustering quality.
+
+#### Heuristic Comparison
+
+**[-/0.34]**
+
+**Compare the results of the Eblow and Silhouette heuristics.  Which `k` values have you chosen to explore?  Why?**
+
+The silhouette analysis indicates that k=2 is the optimal number of clusters due to the highest average silhouette width, signifying well-defined clusters, while the elbow method suggests exploring k=4 as a potential point of interest where the rate of decrease in within-cluster variation diminishes. Therefore, k=2 is chosen for its strong cluster definition, and k=4 for a more nuanced cluster exploration, despite its less distinct indication from the silhouette analysis.
+
+### Cluster Object and Cluster Associations
+
+**[-/0.5]**
+
+Remember that in contrast to other clustering methods, when applying hierarchical clustering we create just *one* hierarchical cluster object, then use `cutree` to extract the clusters for different `k` values.  Illustrations of this process are in the readings and lecture slides.
+
+Based on your analysis of the optimization heuristics above, add the cluster labels for the range(s) of `k` values you identified above to the dataset `colleges.tib`. 
+
+```{r colleges-hier-cluster-objs }
+
+##
+## colleges-hier-cluster-objs
+## Your code here
+# Compute Gower dissimilarity matrix
+diss <- daisy(numeric_colleges, metric = "gower")
+# Perform hierarchical clustering
+hc <- hclust(diss, method = "ward.D2")
+colleges.tib <- colleges.tib %>%
+  mutate(
+    cluster_k2 = cutree(hc, k = 2), # Add cluster labels for k = 2
+    cluster_k4 = cutree(hc, k = 4)  # Add cluster labels for k = 4
+  )
+
+
+```
+
+
+### FAMD Components  
+
+**[-/0.5]**
+
+Generate the components data structure (`colleges.famd`), do not forget to set `graph=FALSE`.
+
+```{r colleges-famd-components}
+
+##
+## colleges-famd-components
+## Your code here
+
+colleges.famd <- FAMD(colleges.tib, graph = FALSE)
+
+
+```
+
+#### Scree Plot  
+
+**[-/0.5]**
+
+```{r colleges-famd-scree }
+
+##
+## colleges-famd-scree
+## Your code here
+
+colleges_famd_scree_plot <- fviz_eig(colleges.famd) +
+  labs(title = "Scree Plot from FAMD",
+       x = "Principal Components",
+       y = "Variance Explained") +
+  theme_minimal()
+
+# Print the scree plot
+print(colleges_famd_scree_plot)
+
+```
+
+**Interpret the results.  How does it compare to our earlier analysis in class?  *Just looking at this graph,* has adding additional variables improved the results or not?**
+
+An important aspect to consider when comparing with the analysis in class is that the analysis here has more variables.  As such, even though the variance captured is lower, it may also capture all the variables from the previous analysis.  When you look at the analysis in the next problem, you see more variables are captured in Dim1 and Dim2.  More interestingly, the variables captured contribute more than enrollment, which previously dominated the contributions.
+
+#### Variables' Contribution to the First Two Components  
+
+**[-/0.5]**
+
+Plot the contributions of the variables to components 1 and 2 (Dim.1 and Dim.2).
+
+```{r colleges-famd-var-contrib, fig.width=6.5, fig.height=8 }
+
+##
+## colleges-famd-var-contrib
+## Your code here
+
+# Plot the contributions of variables to the first principal component (Dim.1)
+contrib_dim1 <- fviz_contrib(colleges.famd, choice = "var", axes = 1) +
+  labs(title = "Variable Contribution to PC1",
+       x = "Variables",
+       y = "Contribution (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) # Rotate the x-axis labels to be vertical
+
+# Plot the contributions of variables to the second principal component (Dim.2)
+contrib_dim2 <- fviz_contrib(colleges.famd, choice = "var", axes = 2) +
+  labs(title = "Variable Contribution to PC2",
+       x = "Variables",
+       y = "Contribution (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) # Rotate the x-axis labels to be vertical
+
+# Combine the plots into one figure with grid.arrange
+grid.arrange(contrib_dim1, contrib_dim2, nrow = 2)
+
+```
+
+
+### Plot Cluster Boundaries and Observations
+
+First you will need to add the component coordinates to your dataset, then compare and contrast the cluster boundaries and observations.
+
+#### Add Component Coordinates to Tibble  
+
+**[-/0.5]**
+
+```{r colleges-component-coordinates}
+
+##
+## colleges-component-coordinates
+## Your code here
+pca_results <- PCA(colleges.tib %>% select(where(is.numeric)), graph = FALSE)
+
+colleges.tib <- colleges.tib %>%
+  mutate(
+    Dim1 = pca_results$ind$coord[, 1], # First principal component
+    Dim2 = pca_results$ind$coord[, 2]  # Second principal component
+  )
+
+# View the updated tibble with PCA coordinates
+print(colleges.tib)
+
+```
+
+
+#### Boundaries Comparison  
+
+**[-/2]**
+
+Here you will compare and contrast the boundaries of the clusters generated from the various values of `k` selected earlier.  You can certainly use the comparison strategies developed earlier in this Learning Exercise, but you must have at least one plot that compares the boundaries and one that displays the observations and the boundaries of clusters and other annotations you will use to evaluate and interpret your clusters.  This is an opportunity to get creative with colors, shapes, and other plot aesthetics.
+
+```{r colleges-hier-boundaries-and-observations }
+
+##
+## colleges-hier-boundaries-and-observations
+## Your code here
+colleges.tib <- colleges.tib %>%
+  mutate(
+    cluster_k3 = cutree(hc, k = 3), # Clusters for k=3
+    cluster_k5 = cutree(hc, k = 5)  # Clusters for k=5
+  )
+
+# Convert to factors for plotting
+colleges.tib$cluster_k3 <- as.factor(colleges.tib$cluster_k3)
+colleges.tib$cluster_k5 <- as.factor(colleges.tib$cluster_k5)
+
+# Create a base plot
+base_plot <- ggplot(colleges.tib, aes(x = Dim1, y = Dim2)) + theme_minimal()
+
+# Boundary plot for k=3
+boundary_plot_k3 <- base_plot +
+  geom_encircle(aes(color = cluster_k3), size = 1, expand = 0.05) +
+  labs(title = "Cluster Boundaries for k=3")
+
+# Boundary plot for k=5
+boundary_plot_k5 <- base_plot +
+  geom_encircle(aes(color = cluster_k5), size = 1, expand = 0.05) +
+  labs(title = "Cluster Boundaries for k=5")
+
+# Observations plot with boundaries for k=3
+observations_boundaries_k3 <- base_plot +
+  geom_point(aes(color = cluster_k3)) +
+  geom_encircle(aes(color = cluster_k3), size = 1, expand = 0.05) +
+  labs(title = "Observations and Boundaries for k=3")
+
+# Observations plot with boundaries for k=5
+observations_boundaries_k5 <- base_plot +
+  geom_point(aes(color = cluster_k5)) +
+  geom_encircle(aes(color = cluster_k5), size = 1, expand = 0.05) +
+  labs(title = "Observations and Boundaries for k=5")
+
+# Print the plots
+print(boundary_plot_k3)
+print(boundary_plot_k5)
+print(observations_boundaries_k3)
+print(observations_boundaries_k5)
+
+
+```
+
+**Do you find the boundaries visualization useful for selecting among the range of `k` values offered by our heuristics?  Consider this visualization as one for the analyst, in contrast to those intended to support a narrative for readers.**
+The cluster boundary visualizations for k=3 and k=5 provide a clear visual aid to assess the clustering structure, revealing that while three clusters offer distinct, well-separated groupings, increasing the clusters to five offers finer detail at the cost of increased overlap and less clear boundaries, thus guiding the analyst to weigh broad patterns against granularity in selecting the optimal k.
+
+
+**Describe the choices of `k` values that you have chosen to examine here.  Did they provide additional insight into the data?  Did these clusters capture any of the outliers we discussed in class?  If so, upon examination, did those highlight substantive differences?**
+
+The chosen k values of 3 and 5 for clustering unveil different layers of data organization: k=3 offers a macroscopic view, cleanly segmenting the data into widely differentiated groups, whereas k=5 provides a microscopic view, revealing subtle structures and capturing outliers which may represent unique data behaviors or anomalies, warranting additional scrutiny to understand their nature and relevance.
+
+
+## Comparing Hierarchical and PAM with Mixed Variables
+
+**The exercises in this section are worth a total of 4/20 points for this assessment.**
+
+In this final exercise, you will redo the clustering exercise from the slides using PAM (k-mediod) clustering, then compare the resulting clusters with those generated by the hierarchical clusters generated in the previous exercise.  From the previous exercise, you already have the Gower distance object and the FAMD component analysis.  Of the steps in our cluster analysis workflow, you will need to:
+
+  - perform the optimization heuristics and select a set of `k` values you want to explore, indicate which `k` values you will explore and briefly explain why based on the optimization heuristics graphs
+  - apply the PAM clustering algorithm for your selected `k` values and add those cluster associations to `colleges.tib`, distinguishing them from the existing hierarchical associations (perhaps name them something like `pk_2`, `pk_3`, etc.)
+  - plot the boundaries for the PAM `k` values as in the previous exercise (this should just be recycling the code from the previous exercise, using the PAM `k` values instead of those from hierarchical) and interpret the results
+  - select the `k` value from PAM you think is most useful, then plot the observations as before (annotated by cluster and other variables, such as `is_elite` and `is_private`) and interpret the results
+  - use `grid.arrange` to compare the plots of the clusters generated by hierarchical and PAM side-by-side; provide a brief description and evaluation of the differences
+  
+
+### Optimization Heuristics  
+
+**[-/0.5]**
+
+```{r colleges-pam-heuristics}
+
+##
+## colleges-pam-heuristics
+## Your code here
+# Selecting the relevant numerical columns for the PAM clustering
+colleges_numeric <- colleges.tib %>% 
+  select(where(is.numeric))
+
+# Compute PAM clustering for k=3
+set.seed(42) # Set a seed for reproducibility
+pam_fit_k3 <- pam(diss, 3)
+
+# Add PAM clustering results to the dataset
+colleges.tib <- colleges.tib %>%
+  mutate(pk_3 = factor(pam_fit_k3$clustering))
+
+# Plotting the cluster boundaries for PAM k=3
+boundary_plot_pam_k3 <- ggplot(colleges.tib, aes(x = Dim1, y = Dim2)) +
+  geom_point(aes(color = pk_3)) + # Add points colored by PAM clusters
+  geom_encircle(aes(color = pk_3), size = 1, expand = 0.1) + # Encircle PAM clusters
+  scale_color_manual(values = c("red", "green", "blue")) + # Customize cluster colors
+  labs(title = "PAM Cluster Boundaries for k=3") +
+  theme_minimal()
+
+# Print the PAM cluster boundary plot
+print(boundary_plot_pam_k3)
+```
+
+**Please providee an interpretation of your results.**
+The PAM cluster boundaries for k=3 reveal three distinct groupings within the dataset. The red and green clusters have some degree of overlap, suggesting similarities or transitional characteristics between these two groups. The blue cluster is more separate, indicating it may represent a distinct category within the dataset. These visual distinctions could reflect underlying differences in the data's features, suggesting that k=3 offers a balance between simplicity and meaningful segmentation, useful for further analysis or informing decision-making processes.
+
+### Apply PAM (k-medoids) Clustering  
+
+**[-/0.5]**
+
+```{r colleges-pam-clusters}
+
+##
+## colleges-pam-clusters
+## Your code here
+
+# Apply PAM clustering to the dataset for k=3
+set.seed(42)  # Ensure reproducibility
+pam_fit <- pam(diss, 3)
+
+# Add PAM cluster assignments to the colleges.tib
+colleges.tib <- colleges.tib %>%
+  mutate(cluster_pam = factor(pam_fit$clustering))
+
+# Visualize the PAM clustering results
+pam_clusters_plot <- ggplot(colleges.tib, aes(x = Dim1, y = Dim2)) +
+  geom_point(aes(color = cluster_pam), alpha = 0.6) +
+  scale_color_manual(values = c("#FF0000", "#00FF00", "#0000FF")) + # Customize colors
+  labs(title = "PAM Clustering for k=3") +
+  theme_minimal()
+
+# Print the plot
+print(pam_clusters_plot)
+
+```
+
+**Provide your interpretation of this visualization below**
+This visualization of PAM clustering for k=3 shows a clear division into three groups based on the clustering algorithm's assessment of the data's structure. The red and green clusters are situated closer together, possibly indicating a degree of similarity between them. In contrast, the blue cluster is distinct and separate on the right side, which could signify a unique subgroup within the dataset with characteristics that differ significantly from the other two clusters. The spread of the points within each cluster suggests variability within groups, and the separation between clusters indicates distinctness in the underlying data characteristics. This visualization could provide insights for targeted analysis, segmentation, or decision-making.
+
+### Cluster Boundaries for Selected PAM `k` Values  
+
+**[-/1]**
+
+```{r colleges-pam-boundaries }
+
+##
+## colleges-pam-boundaries
+## Your code here
+# Apply PAM clustering for the selected k value and add the cluster assignment to the dataset
+pam_res_k3 <- pam(diss, 3)
+colleges.tib <- colleges.tib %>%
+  mutate(cluster_pam_k3 = factor(pam_res_k3$clustering))
+
+# Plotting the boundaries for the selected PAM k value (k=3)
+ggplot(colleges.tib, aes(x = Dim1, y = Dim2, color = cluster_pam_k3)) +
+  geom_point(alpha = 0.6) + # Slightly transparent points
+  geom_encircle(aes(fill = cluster_pam_k3), alpha = 0.2, show.legend = FALSE) +
+  scale_fill_manual(values = c("red", "green", "blue")) + # Manual colors for clusters
+  scale_color_manual(values = c("red", "green", "blue")) +
+  labs(title = "PAM Cluster Boundaries for k=3") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
+
+**Provide your interpretation of this visualization below**
+The visualization for PAM clustering with k=3 shows three clusters with colored boundaries indicating the spread and overlap of each group. The red and green clusters are closer to each other, suggesting some shared characteristics between them, while the blue cluster extends further out, suggesting it may represent a more distinct or separate category within the dataset. The overlap between the clusters, particularly where red and green meet, might indicate transitional data points that share features of both clusters. This clustering provides a clear visual distinction that can be leveraged for further analysis.
+
+### Cluster Observations  
+
+**[-/1]**
+
+```{r colleges-pam-observations }
+
+##
+## colleges-pam-observations
+## Your code here
+pam_res_k3 <- pam(diss, 3)
+colleges.tib <- colleges.tib %>%
+  mutate(cluster_pam_k3 = factor(pam_res_k3$clustering))
+
+# Visualization of cluster observations for k=3
+ggplot(colleges.tib, aes(x = Dim1, y = Dim2)) +
+  geom_point(aes(color = cluster_pam_k3), size = 2, alpha = 0.6) +  # Points colored by cluster assignment
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A")) +  # Set custom colors
+  labs(title = "Cluster Observations for PAM k=3", x = "Component 1", y = "Component 2") +
+  theme_minimal() +
+  theme(legend.title = element_blank(), legend.position = "right")  # Minimal theme and legend adjustments
+
+
+```
+
+**Provide your interpretation of this visualization below**
+The visualization for PAM clustering at k=3 shows data points spread across three clusters on the first two principal components. The red cluster forms a denser grouping, suggesting tighter similarity within its points, while the blue and green clusters are more dispersed, indicating more variation within those groups. Some blue points appear close to or within the red cluster's area, indicating possible similarities or overlap between these clusters. The distribution of the green cluster's points suggests it may capture a distinct variance direction in the data. This clustering can inform targeted analysis or interventions by identifying and characterizing these distinct groups within the dataset.
+
+### Comparison of Hierarchical and PAM Cluster  
+
+**[-/1]**
+
+You can use `grid.arrange` to present the two visualizations developed above, one on top of the other (one column).
+
+```{r colleges-pam-hier-observations-comparison, fig.height=10, fig.width=8}
+
+##
+## colleges-pam-hier-observations-comparison
+## Your code here
+
+# Cut the hierarchical tree to get cluster assignments for k=3
+cluster_assignments <- cutree(hc, k=3)
+
+# Add the cluster assignments to your data frame
+colleges.tib$cluster_hc <- factor(cluster_assignments)
+
+# Create a plot for the hierarchical cluster boundaries
+hierarchical_boundaries_plot <- ggplot(colleges.tib, aes(x = Dim1, y = Dim2)) +
+  geom_point(aes(color = cluster_hc)) +
+  geom_encircle(aes(color = cluster_hc), size = 1, expand = 0.1) +
+  scale_color_manual(values = c("red", "green", "blue")) +
+  labs(title = "Hierarchical Cluster Boundaries for k=3") +
+  theme_minimal()
+
+# Compare Hierarchical and PAM Clustering using grid.arrange
+comparison_plot <- grid.arrange(
+  hierarchical_boundaries_plot, boundary_plot_pam_k3,
+  nrow = 2
+)
+```
+
+**Provide your interpretation of this visualization below**
+The visual comparison between Hierarchical and PAM clustering for k=3 shows that PAM clustering results in more distinct and tightly formed clusters with less overlap, particularly between the red and green groups, than hierarchical clustering. This clarity in cluster delineation may be preferable when aiming for a clear-cut classification of data points and can aid in better understanding the underlying structure of the dataset.
+
+
+
+
+
+
+
+
+
+
+
+
+
